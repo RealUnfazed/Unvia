@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en" class="bg-black">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Unvia</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%2338bdf8%27 stroke-width=%273%27 stroke-linecap=%27round%27%3E%3Cpath d=%27M6 4v9a6 6 0 0 0 12 0V4%27/%3E%3C/svg%3E">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+@keyframes pg{from{opacity:0;transform:translateY(8px)}}
+@keyframes drop{from{opacity:0;transform:translateY(-14px) scale(.98)}}
+@keyframes pop{40%{transform:scale(1.4)}}
+@keyframes sh{100%{transform:translateX(100%)}}
+.pg{animation:pg .22s ease-out}.drop{animation:drop .3s cubic-bezier(.2,.8,.2,1)}
+.pop svg{animation:pop .35s ease}
+dialog[open]{animation:pg .2s ease-out}dialog::backdrop{backdrop-filter:blur(3px)}
+button{transition:background-color .15s,color .15s,border-color .15s,transform .1s}button:active{transform:scale(.95)}
+a{transition:background-color .15s,color .15s}
+.skl{position:relative;overflow:hidden}.skl::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);transform:translateX(-100%);animation:sh 1.2s infinite}
+aside{scrollbar-width:none}
+@keyframes heart{0%{transform:scale(1)}30%{transform:scale(.55) rotate(-14deg)}60%{transform:scale(1.55) rotate(8deg)}100%{transform:scale(1)}}
+@keyframes ring{from{transform:scale(.5);opacity:.9}to{transform:scale(2.3);opacity:0}}
+@keyframes spin{to{transform:rotate(360deg) scale(1.15)}}
+@keyframes drip{0%{transform:translateY(0)}30%{transform:translateY(-8px) scaleY(1.2)}60%{transform:translateY(2px) scaleY(.8)}100%{transform:translateY(0)}}
+@keyframes nudge{0%,100%{transform:none}30%{transform:translateX(6px) rotate(-14deg)}60%{transform:translateX(-3px) rotate(9deg)}}
+.a-like svg{animation:heart .55s cubic-bezier(.2,.8,.2,1.4)}.a-like::after{content:"";position:absolute;inset:0;border-radius:9999px;border:2px solid #db2777;animation:ring .5s ease-out forwards;pointer-events:none}
+.a-repost svg{animation:spin .6s cubic-bezier(.3,1.4,.5,1)}.a-bookmark svg{animation:drip .5s ease}.a-reply svg{animation:nudge .5s ease}
+@media (prefers-reduced-motion:reduce){*,::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body class="min-h-screen bg-black text-zinc-100 antialiased" style="padding-top:env(safe-area-inset-top)">
+<div class="mx-auto flex max-w-[1265px] justify-center">
+  <header class="sticky top-0 hidden h-screen w-[68px] shrink-0 flex-col justify-between px-1 py-2 sm:flex xl:w-[260px] xl:px-3">
+    <div><a href="#/" class="grid h-12 w-12 place-items-center rounded-full hover:bg-zinc-900"><svg viewBox="0 0 24 24" class="h-8 w-8 text-sky-400" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v9a6 6 0 0 0 12 0V4"/></svg></a>
+      <nav id="nav"></nav>
+      <button data-compose class="mt-4 grid h-12 w-12 place-items-center rounded-full bg-sky-500 font-bold text-white hover:bg-sky-400 xl:w-full"><span class="xl:hidden">＋</span><span class="hidden xl:inline">Post</span></button></div>
+    <div id="acct" class="pb-2"></div>
+  </header>
+  <main class="min-h-screen w-full max-w-[600px] border-x border-zinc-800 pb-20 sm:pb-0"><div id="view"></div></main>
+  <aside class="sticky top-0 hidden h-screen w-[350px] shrink-0 overflow-y-auto px-6 py-3 lg:block"><div class="space-y-4">
+    <div class="sticky top-0 z-10 bg-black pb-1"><input id="sq" placeholder="Search" class="w-full rounded-full bg-zinc-900 px-5 py-3 outline-none ring-1 ring-transparent transition focus:bg-black focus:ring-sky-500"></div>
+    <div id="trend"></div><div id="sug"></div>
+    <p class="px-4 pb-6 text-xs leading-5 text-zinc-600">Terms of Service · Privacy Policy · Cookie Policy · Accessibility · © 2026 Unvia</p></div></aside>
+</div>
+<nav id="tabs" class="fixed inset-x-0 bottom-0 z-20 flex justify-around border-t border-zinc-800 bg-black/90 backdrop-blur sm:hidden" style="padding-bottom:env(safe-area-inset-bottom)"></nav>
+<button data-compose class="fixed right-4 z-20 grid h-14 w-14 place-items-center rounded-full bg-sky-500 text-2xl text-white shadow-lg sm:hidden" style="bottom:calc(4.5rem + env(safe-area-inset-bottom))">＋</button>
+<svg width="0" height="0" class="absolute"><defs><linearGradient id="og" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f9d423"/><stop offset=".5" stop-color="#ff4e50"/><stop offset="1" stop-color="#a855f7"/></linearGradient></defs></svg>
+<dialog id="gd" class="m-auto w-[min(92vw,480px)] rounded-2xl border border-zinc-800 bg-black p-0 text-zinc-100 backdrop:bg-zinc-500/40"><div class="p-3"><input id="gq" placeholder="Search GIFs" class="w-full rounded-full bg-zinc-900 px-4 py-2 outline-none focus:ring-1 focus:ring-sky-500"></div><div id="gg" class="max-h-[60vh] columns-2 gap-2 overflow-y-auto p-3 pt-0"></div></dialog>
+<dialog id="dlg" class="m-auto w-[min(92vw,600px)] rounded-2xl border border-zinc-800 bg-black p-0 text-zinc-100 backdrop:bg-zinc-500/40"></dialog>
+
+<script>
+// Native apps (Capacitor) have no same-origin server, so point them at the deployed API.
+const API = window.Capacitor?.isNativePlatform?.() ? 'https://YOUR-APP.vercel.app' : '';
+const $ = (s) => document.querySelector(s), P = {}, dlg = $('#dlg'), gd = $('#gd');
+let gt;
+const esc = (s) => (s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const linkify = (t) => esc(t).replace(/(^|\s)@(\w+)/g, '$1<a href="#/u/$2" class="text-sky-500 hover:underline">@$2</a>').replace(/(^|\s)#(\w+)/g, '$1<a href="#/search/%23$2" class="text-sky-500 hover:underline">#$2</a>');
+const ago = (t) => { const s = (Date.now() - new Date(t)) / 1000; return s < 60 ? 'now' : s < 3600 ? (s / 60 | 0) + 'm' : s < 86400 ? (s / 3600 | 0) + 'h' : new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); };
+const hue = (s) => Math.abs([...(s || '')].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)) % 360;
+let token = localStorage.token, me = JSON.parse(localStorage.me || 'null'), tab = 'all', reg = false, cur;
+const pages = {};
+
+const I = { reply: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z', repost: 'M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3', heart: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z', mark: 'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z', home: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10', user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', back: 'M19 12H5M12 19l-7-7 7-7', more: 'M5 12h.01M12 12h.01M19 12h.01', sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6', shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3', trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6' };
+const ic = (n, c = '', fill = false) => `<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] ${c}" fill="${fill ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${I[n]}"/></svg>`;
+
+async function api(path, o = {}) {
+  const headers = { ...(typeof o.body === 'string' && { 'Content-Type': 'application/json' }), ...(token && { Authorization: 'Bearer ' + token }) };
+  const r = await fetch(API + '/api' + path, { ...o, headers });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || 'Something went wrong');
+  return d;
+}
+
+const av = (u, c = 'h-10 w-10') => `<a href="#/u/${esc(u?.username)}" class="${c} grid shrink-0 place-items-center rounded-full font-bold text-white" style="background:hsl(${hue(u?.username)} 55% 42%)">${u?.avatar ? `<img src="${esc(u.avatar)}" class="h-full w-full rounded-full object-cover">` : esc((u?.name || '?')[0].toUpperCase())}</a>`;
+const fbtn = (u, on) => `<button data-follow="${esc(u)}" class="rounded-full px-4 py-1.5 text-sm font-bold ${on ? 'border border-zinc-600 text-white hover:border-red-500 hover:text-red-500' : 'bg-white text-black hover:bg-zinc-200'}">${on ? 'Following' : 'Follow'}</button>`;
+const btn = (act, n, h, on = '', fill = false) => `<button data-act="${act}" class="flex items-center gap-1.5 rounded-full p-2 relative ${h} ${h.replace('text-', 'bg-')}/10 ${on || ''}">${ic({ like: 'heart', bookmark: 'mark', del: 'trash' }[act] || act, '', fill)}${n ? `<span>${n}</span>` : ''}</button>`;
+const guest = () => '<div class="p-10 text-center"><p class="mb-4 text-zinc-400">Log in to see this.</p><button data-login class="rounded-full bg-sky-500 px-6 py-2 font-bold text-white">Log in</button></div>';
+const head = (t, sub = '', back = true) => `<div class="sticky top-0 z-10 flex items-center gap-6 bg-black/80 px-4 py-2 backdrop-blur">${back ? `<button data-back class="rounded-full p-2 hover:bg-zinc-900">${ic('back')}</button>` : ''}<div><h1 class="text-xl font-bold leading-tight">${t}</h1>${sub ? `<div class="text-xs text-zinc-500">${sub}</div>` : ''}</div></div>`;
+
+const card = (p) => { P[p.id] = p; const a = p.author || {}; return `<article data-id="${p.id}" class="cursor-pointer border-b border-zinc-800 px-4 pb-1 pt-3 transition-colors hover:bg-white/[.03]">
+  ${p.repostBy ? `<div class="mb-1 ml-12 flex items-center gap-2 text-xs font-bold text-zinc-500">${ic('repost', '!h-3.5 !w-3.5')}${esc(p.repostBy.name)} reposted</div>` : ''}
+  <div class="flex gap-3">${av(a)}<div class="min-w-0 flex-1">
+    <div class="flex gap-1 text-[15px]"><a href="#/u/${esc(a.username)}" class="truncate font-bold hover:underline">${esc(a.name)}${bdg(a)}</a><span class="truncate text-zinc-500">@${esc(a.username)} · ${ago(p.at)}</span></div>
+    <p class="whitespace-pre-wrap break-words text-[15px]">${linkify(p.text)}</p>
+    ${p.media ? `<img src="${esc(p.media)}" loading="lazy" class="mt-3 max-h-[510px] w-full rounded-2xl border border-zinc-800 object-cover">` : ''}
+    <div class="-ml-2 mt-1 flex max-w-md justify-between text-sm text-zinc-500">
+      ${btn('reply', p.replies, 'hover:text-sky-500')}${btn('repost', p.reposts, 'hover:text-emerald-500', p.reposted && 'text-emerald-500')}
+      ${btn('like', p.likes, 'hover:text-pink-600', p.liked && 'text-pink-600', p.liked)}${btn('bookmark', '', 'hover:text-sky-500', p.bookmarked && 'text-sky-500', p.bookmarked)}
+      ${btn('more', '', 'hover:text-sky-500')}
+    </div></div></div></article>`; };
+
+const composer = (parent = '') => `<div class="cmp flex gap-3 p-4" data-parent="${parent}">${av(me)}<div class="min-w-0 flex-1">
+  <textarea maxlength="280" rows="2" placeholder="${parent ? 'Post your reply' : "What's happening?"}" class="w-full resize-none bg-transparent text-xl outline-none placeholder:text-zinc-500"></textarea>
+  <img class="pv mb-2 hidden max-h-64 rounded-2xl">
+  <div class="flex items-center justify-between border-t border-zinc-800 pt-3"><label class="cursor-pointer text-sm font-semibold text-sky-500 hover:text-sky-400">Add image<input type="file" accept="image/*" class="hidden"></label><button type="button" data-gifopen class="ml-4 rounded border border-sky-500 px-1.5 text-xs font-bold text-sky-500 hover:bg-sky-500/10">GIF</button>
+  <div class="flex items-center gap-3"><span class="ct text-sm text-zinc-500">280</span><button class="sub rounded-full bg-sky-500 px-5 py-1.5 font-bold text-white disabled:opacity-50">${parent ? 'Reply' : 'Post'}</button></div></div></div></div>`;
+
+const inp = 'w-full rounded border border-zinc-800 bg-zinc-900 px-3 py-2 outline-none focus:border-sky-500';
+const openDlg = (h) => { dlg.innerHTML = h; if (!dlg.open) dlg.showModal(); };
+const openAuth = () => openDlg(`<form id="af" class="space-y-3 p-6"><h2 class="text-2xl font-extrabold">${reg ? 'Create your account' : 'Log in to Unvia'}</h2>
+  <input name="username" required autocapitalize="none" placeholder="Username" class="${inp}">${reg ? `<input name="name" placeholder="Display name" class="${inp}">` : ''}
+  <input name="password" type="password" required minlength="8" placeholder="Password (8+ characters)" class="${inp}"><p class="err text-sm text-red-400"></p>
+  <button class="w-full rounded-full bg-sky-500 py-2.5 font-bold text-white">${reg ? 'Create account' : 'Log in'}</button>
+  <button type="button" data-sw class="text-sm text-sky-400">${reg ? 'Have an account? Log in' : 'New here? Create an account'}</button></form>`);
+
+const skel = '<div class="skl m-4 h-24 rounded-2xl bg-zinc-900"></div>'.repeat(3);
+const drop = (k) => { pages[k]?.el.remove(); delete pages[k]; };
+const rerender = (id) => document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => (a.outerHTML = card(P[id])));
+const ins = (ref, pos, html) => { ref.insertAdjacentHTML(pos, html); (pos === 'afterbegin' ? ref.firstElementChild : ref.nextElementSibling).classList.add('drop'); };
+function toast(m, err) {
+  const t = document.createElement('div');
+  t.className = `drop fixed left-1/2 z-50 -translate-x-1/2 rounded-full px-5 py-2 text-sm font-bold text-white shadow-lg ${err ? 'bg-red-600' : 'bg-sky-500'}`;
+  t.style.bottom = 'calc(5rem + env(safe-area-inset-bottom))'; t.textContent = m;
+  (dlg.open ? dlg : document.body).append(t); setTimeout(() => t.remove(), 2600);
+}
+const urow = (u) => `<div class="flex items-center gap-3 px-4 py-3">${av(u)}<a href="#/u/${esc(u.username)}" class="min-w-0 flex-1 leading-tight"><div class="truncate font-bold hover:underline">${esc(u.name)}${bdg(u)}</div><div class="truncate text-sm text-zinc-500">@${esc(u.username)}</div></a>${me?.id === u.id ? '' : fbtn(u.username, !!u.isFollowing)}</div>`;
+
+const BC = { verified: ['#1d9bf0', 'Verified'], business: ['#e8b923', 'Verified business'], government: ['#8b98a5', 'Government'], owner: ['url(#og)', 'Platform owner'] };
+const bdg = (u) => { const b = BC[u?.badge]; return b ? `<svg viewBox="0 0 24 24" class="ml-1 inline-block h-[18px] w-[18px] shrink-0 align-[-3px]" fill="${b[0]}"><title>${b[1]}</title><path d="M12 1l2.6 2.1 3.3-.3 1.2 3.1 3 1.4-.7 3.3 1.5 2.9-2.4 2.3-.4 3.3-3.3.7L12 22l-2.8-2.1-3.3-.7-.4-3.3L3 13.6l1.5-2.9-.7-3.3 3-1.4 1.2-3.1 3.3.3z"/><path d="M8 12.5l2.7 2.7L16 9.5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>` : ''; };
+const collapse = (el) => {
+  el.style.cssText = `height:${el.offsetHeight}px;overflow:hidden;transition:all .5s cubic-bezier(.4,0,.2,1)`;
+  requestAnimationFrame(() => requestAnimationFrame(() => { el.style.cssText += ';height:0;padding-top:0;padding-bottom:0;opacity:0;transform:translateX(60px) rotate(3deg);border-width:0'; }));
+  setTimeout(() => el.remove(), 520);
+};
+async function del(id) { if (!confirm('Delete this post?')) return; try { await api('/posts/' + id, { method: 'DELETE' }); document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => collapse(a)); toast('Post deleted'); } catch (x) { toast(x.message, 1); } }
+const reportDlg = (kind, id) => openDlg(`<div class="p-4"><h2 class="mb-2 text-xl font-extrabold">Report ${kind}</h2><p class="mb-2 text-sm text-zinc-500">What’s going on?</p>${['Spam', 'Abuse or harassment', 'Hate or discrimination', 'Violence or threats', 'Misinformation', 'Something else'].map((r) => `<button data-rep="${r}" data-k="${kind}" data-t="${id}" class="block w-full rounded-xl px-4 py-3 text-left hover:bg-zinc-900">${r}</button>`).join('')}</div>`);
+async function gifs(q = '') {
+  $('#gg').innerHTML = skel;
+  try { const g = await api('/gifs?q=' + encodeURIComponent(q)); $('#gg').innerHTML = g.length ? g.map((x) => `<img src="${esc(x)}" data-gif="${esc(x)}" class="mb-2 w-full cursor-pointer rounded-lg transition hover:scale-[1.02] hover:opacity-90">`).join('') : '<p class="p-6 text-zinc-500">No GIFs found. Is GIPHY_API_KEY set on the server?</p>'; }
+  catch (x) { $('#gg').innerHTML = `<p class="p-6 text-red-400">${esc(x.message)}</p>`; }
+}
+function settings(v) {
+  v.innerHTML = head('Settings', '', false) + (!me ? guest() : `<div class="space-y-6 p-4"><div><h2 class="font-bold">Your account</h2><p class="text-sm text-zinc-500">@${esc(me.username)}</p><button data-edit class="mt-2 rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Edit profile, photo &amp; banner</button></div>
+  <form id="pf" class="space-y-2"><h2 class="font-bold">Change password</h2><input name="current" type="password" required placeholder="Current password" class="${inp}"><input name="next" type="password" required minlength="8" placeholder="New password (8+ characters)" class="${inp}"><p class="err text-sm text-red-400"></p><button class="rounded-full bg-white px-5 py-2 font-bold text-black">Update password</button></form>
+  <div class="border-t border-zinc-800 pt-4"><h2 class="mb-2 font-bold text-red-500">Danger zone</h2><button data-out class="mr-2 rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Log out</button><button data-delacct class="rounded-full bg-red-600 px-4 py-1.5 font-bold">Delete account</button></div></div>`);
+}
+async function admin(v) {
+  if (!me?.admin) return (v.innerHTML = head('Admin', '', false) + '<p class="p-10 text-center text-zinc-500">Admins only.</p>');
+  v.innerHTML = head('Admin panel', 'Manage your platform', false) + skel;
+  try {
+    const d = await api('/admin/overview');
+    v.innerHTML = head('Admin panel', 'Manage your platform', false) + `<div class="grid grid-cols-3 gap-2 p-4">${[['Users', d.users], ['Posts', d.posts], ['Open reports', d.openReports]].map(([t, n]) => `<div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4"><div class="text-2xl font-extrabold">${n}</div><div class="text-xs text-zinc-500">${t}</div></div>`).join('')}</div>
+    <h2 class="px-4 pt-2 text-xl font-extrabold">Reports</h2>${d.reports.length ? d.reports.map((r) => `<div class="border-b border-zinc-800 p-4" data-rid="${r.id}"><div class="text-sm"><b>${esc(r.reason)}</b> · by @${esc(r.by)}</div><p class="my-2 rounded-xl bg-zinc-900 p-3 text-sm">${esc(r.preview)}</p><div class="flex gap-2">${[['dismiss', 'Dismiss'], ['delete', 'Delete post'], ['ban', 'Ban user']].map(([a, t]) => `<button data-ra="${a}" class="rounded-full border border-zinc-600 px-3 py-1 text-sm hover:bg-zinc-900">${t}</button>`).join('')}</div></div>`).join('') : '<p class="p-6 text-zinc-500">No open reports.</p>'}
+    <h2 class="px-4 pt-4 text-xl font-extrabold">Users &amp; badges</h2>${d.recent.map((u) => `<div class="flex items-center gap-2 border-b border-zinc-800 px-4 py-3" data-uid="${u.id}">${av(u)}<div class="min-w-0 flex-1 truncate"><b>${esc(u.name)}</b>${bdg(u)} <span class="text-zinc-500">@${esc(u.username)}</span></div><select data-badge class="rounded bg-zinc-900 px-2 py-1 text-sm">${['', 'verified', 'business', 'government', 'owner'].map((b) => `<option value="${b}" ${u.badge === b ? 'selected' : ''}>${b || 'no badge'}</option>`).join('')}</select><button data-ban data-banned="${u.banned ? 1 : 0}" class="text-sm text-red-500">${u.banned ? 'Unban' : 'Ban'}</button></div>`).join('')}`;
+  } catch (x) { v.innerHTML = head('Admin panel', '', false) + `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
+}
+
+function feed(el, qs, empty) {
+  let before = '', done = false, busy = false;
+  const s = document.createElement('div'); s.className = 'min-h-[6rem]'; s.innerHTML = skel; el.after(s);
+  const more = async () => {
+    if (busy || done) return; busy = true; if (before) s.innerHTML = skel;
+    try {
+      const ps = await api(`/posts?${qs}${before ? '&before=' + encodeURIComponent(before) : ''}`);
+      el.insertAdjacentHTML('beforeend', ps.map(card).join(''));
+      if (ps.length < 20) { done = true; s.innerHTML = el.children.length ? '' : `<p class="p-10 text-center text-zinc-500">${empty}</p>`; } else { before = ps.at(-1).feedAt; s.innerHTML = ''; }
+    } catch (x) { done = true; s.innerHTML = `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
+    busy = false;
+  };
+  new IntersectionObserver((e) => e[0].isIntersecting && more(), { rootMargin: '600px' }).observe(s);
+}
+
+async function search(v, q) {
+  v.innerHTML = `<div class="sticky top-0 z-10 bg-black/80 p-3 backdrop-blur"><input class="sq w-full rounded-full bg-zinc-900 px-5 py-3 outline-none ring-1 ring-transparent transition focus:ring-sky-500" placeholder="Search people and posts" value="${esc(q)}"></div><div class="r"></div>`;
+  const r = v.querySelector('.r'); if (!q) return (r.innerHTML = '<p class="p-10 text-center text-zinc-500">Search people, posts and #hashtags.</p>');
+  r.innerHTML = skel;
+  try {
+    const d = await api('/search?q=' + encodeURIComponent(q));
+    r.innerHTML = (d.users.length ? '<h2 class="px-4 pt-3 text-xl font-extrabold">People</h2>' + d.users.map(urow).join('') + '<div class="border-b border-zinc-800"></div>' : '') + d.posts.map(card).join('') + (d.users.length || d.posts.length ? '' : `<p class="p-10 text-center text-zinc-500">No results for “${esc(q)}”.</p>`);
+  } catch (x) { r.innerHTML = `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
+}
+
+function home(v) {
+  v.innerHTML = `<div class="sticky top-0 z-10 bg-black/80 backdrop-blur"><div class="flex border-b border-zinc-800">${[['all', 'For you'], ['following', 'Following']].map(([t, l]) => `<button data-tab="${t}" class="relative flex-1 py-4 text-[15px] hover:bg-zinc-900 ${tab === t ? 'font-bold' : 'text-zinc-500'}">${l}${tab === t ? '<i class="absolute bottom-0 left-1/2 h-1 w-14 -translate-x-1/2 rounded-full bg-sky-500"></i>' : ''}</button>`).join('')}</div></div>${me ? `<div class="hidden border-b border-zinc-800 sm:block">${composer()}</div>` : ''}<div class="f"></div>`;
+  feed(v.querySelector('.f'), 'feed=' + tab, tab === 'following' ? 'Follow people to fill this timeline.' : 'No posts yet. Write the first one.');
+}
+
+async function profile(v, name) {
+  let u; try { u = await api('/users/' + name); } catch { return (v.innerHTML = head('Profile') + '<p class="p-10 text-center text-zinc-500">This account doesn’t exist.</p>'); }
+  const h = hue(u.username);
+  v.innerHTML = head(esc(u.name), u.posts + ' posts') + `<div class="h-36 sm:h-48" style="background:${u.banner ? `url(${esc(u.banner)}) center/cover` : `linear-gradient(120deg,hsl(${h} 50% 25%),hsl(${(h + 60) % 360} 55% 14%))`}"></div>
+  <div class="px-4 pb-3"><div class="-mt-14 flex items-end justify-between">${av(u, 'h-28 w-28 border-4 border-black text-4xl')}${me?.id === u.id ? '<button data-edit class="rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Edit profile</button>' : `<div class="flex gap-2"><button data-repuser="${u.id}" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('more')}</button>${fbtn(u.username, u.isFollowing)}</div>`}</div>
+  <h2 class="mt-2 text-xl font-extrabold">${esc(u.name)}${bdg(u)}</h2><div class="text-zinc-500">@${esc(u.username)}</div>
+  ${u.bio ? `<p class="mt-3 whitespace-pre-wrap">${linkify(u.bio)}</p>` : ''}
+  <p class="mt-3 text-sm text-zinc-500">Joined ${new Date(u.joined).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>
+  <p class="mt-2 text-sm"><b>${u.following}</b> <span class="text-zinc-500">Following</span> &nbsp; <b>${u.followers}</b> <span class="text-zinc-500">Followers</span></p></div><div class="border-b border-zinc-800"></div><div class="f"></div>`;
+  feed(v.querySelector('.f'), 'feed=user:' + u.username, 'No posts yet.');
+}
+
+async function thread(v, id) {
+  v.innerHTML = head('Post');
+  try {
+    const d = await api('/posts/' + id);
+    v.insertAdjacentHTML('beforeend', (d.parent ? card(d.parent) : '') + card(d.post) + (me ? `<div class="border-b border-zinc-800">${composer(d.post.id)}</div>` : '') + d.replies.map(card).join('') + (d.replies.length ? '' : '<p class="nr p-10 text-center text-zinc-500">No replies yet.</p>'));
+  } catch { v.insertAdjacentHTML('beforeend', '<p class="p-10 text-center text-zinc-500">This post doesn’t exist.</p>'); }
+}
+
+function route() {
+  const h = location.hash || '#/', [, a, b] = h.slice(1).split('/');
+  if (cur && pages[cur]) { pages[cur].y = scrollY; pages[cur].el.hidden = true; }
+  let pg = pages[h];
+  if (!pg) { // pages stay alive once opened, so going back is instant and keeps your scroll position
+    const v = document.createElement('div'); v.className = 'pg'; $('#view').append(v); pg = pages[h] = { el: v, y: 0 };
+    if (a === 'u') profile(v, b);
+    else if (a === 'p') thread(v, b);
+    else if (a === 'settings') settings(v);
+    else if (a === 'admin') admin(v);
+    else if (a === 'search') search(v, decodeURIComponent(b || ''));
+    else if (a === 'bookmarks') { v.innerHTML = head('Bookmarks', '', false) + (me ? '<div class="f"></div>' : guest()); if (me) feed(v.querySelector('.f'), 'feed=bookmarks', 'Save posts to find them here later.'); }
+    else home(v);
+  }
+  pg.el.hidden = false; cur = h; scrollTo(0, pg.y);
+}
+
+function chrome() {
+  const cur = location.hash || '#/', items = [['home', 'Home', '#/'], ['search', 'Search', '#/search'], ['mark', 'Bookmarks', '#/bookmarks'], ['user', 'Profile', me ? '#/u/' + me.username : ''], ...(me ? [['sliders', 'Settings', '#/settings']] : []), ...(me?.admin ? [['shield', 'Admin', '#/admin']] : [])];
+  const link = ([i, t, h], big) => `<a href="${h || '#/'}" ${h ? '' : 'data-need'} class="${big ? 'flex items-center gap-4 p-3 text-xl' : 'p-4'} rounded-full hover:bg-zinc-900 ${cur === h ? 'font-bold' : 'text-zinc-400'}">${ic(i, big ? '!h-7 !w-7' : '!h-6 !w-6')}${big ? `<span class="hidden xl:inline">${t}</span>` : ''}</a>`;
+  $('#nav').innerHTML = items.map((i) => link(i, 1)).join(''); $('#tabs').innerHTML = items.map((i) => link(i)).join('');
+  $('#acct').innerHTML = me ? `<div class="flex items-center gap-3 rounded-full p-2 hover:bg-zinc-900">${av(me)}<div class="hidden min-w-0 flex-1 leading-tight xl:block"><div class="truncate font-bold">${esc(me.name)}</div><div class="truncate text-sm text-zinc-500">@${esc(me.username)}</div></div><button data-out class="hidden text-sm text-zinc-500 hover:text-white xl:block">Log out</button></div>` : '<button data-login class="rounded-full bg-sky-500 px-5 py-2 font-bold text-white">Log in</button>';
+}
+
+async function sugg() {
+  try {
+    const us = await api('/suggest');
+    $('#sug').innerHTML = us.length ? `<div class="rounded-2xl border border-zinc-800 bg-zinc-950/60"><h2 class="px-4 py-3 text-xl font-extrabold">Who to follow</h2>${us.map(urow).join('')}</div>` : '';
+  } catch {}
+}
+async function trend() {
+  try {
+    const t = await api('/trends');
+    $('#trend').innerHTML = `<div class="rounded-2xl border border-zinc-800 bg-zinc-950/60"><h2 class="px-4 py-3 text-xl font-extrabold">What’s happening</h2>${t.length ? t.map((x, i) => `<a href="#/search/%23${esc(x.tag)}" class="block px-4 py-3 hover:bg-white/[.04]"><div class="text-xs text-zinc-500">Trending #${i + 1}</div><div class="font-bold">#${esc(x.tag)}</div><div class="text-xs text-zinc-500">${x.count} post${x.count > 1 ? 's' : ''}</div></a>`).join('') : '<p class="px-4 pb-4 text-sm text-zinc-500">Nothing trending yet. Add a #hashtag to your next post.</p>'}</div>`;
+  } catch {}
+}
+
+async function submit(c) {
+  const b = c.querySelector('.sub'), ta = c.querySelector('textarea'), fi = c.querySelector('input[type=file]'), pid = c.dataset.parent, fd = new FormData();
+  fd.append('text', ta.value); if (pid) fd.append('parent', pid); if (fi.files[0]) fd.append('image', fi.files[0]); else if (c.dataset.gif) fd.append('gif', c.dataset.gif);
+  b.disabled = true;
+  try {
+    const p = await api('/posts', { method: 'POST', body: fd }), inDlg = !!c.closest('dialog');
+    ta.value = ''; fi.value = ''; delete c.dataset.gif; c.querySelector('.pv').classList.add('hidden'); c.querySelector('.ct').textContent = 280;
+    if (inDlg) dlg.close();
+    Object.keys(pages).forEach((k) => k !== cur && k !== '#/' && drop(k));
+    if (pid) {
+      if (P[pid]) { P[pid].replies++; rerender(pid); }
+      const tc = inDlg ? document.querySelector(`.pg:not([hidden]) .cmp[data-parent="${pid}"]`) : c;
+      if (tc) { tc.closest('.pg').querySelector('.nr')?.remove(); ins(tc.parentElement, 'afterend', card(p)); }
+    } else { const f = pages['#/']?.el.querySelector('.f'); if (f) ins(f, 'afterbegin', card(p)); }
+    toast(pid ? 'Your reply was sent' : 'Your post was sent'); trend();
+  } catch (x) { toast(x.message, 1); }
+  b.disabled = false;
+}
+
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('button,a'), art = e.target.closest('article'), d = b?.dataset || {};
+  if (e.target === dlg) return dlg.close();
+  if (e.target === gd) return gd.close();
+  try {
+    const gi = e.target.closest('img[data-gif]');
+    if (gi) { gt.dataset.gif = gi.dataset.gif; const pv = gt.querySelector('.pv'); pv.src = gi.dataset.gif; pv.classList.remove('hidden'); gt.querySelector('input[type=file]').value = ''; return gd.close(); }
+    if ('gifopen' in d) { gt = b.closest('.cmp'); gd.showModal(); return gifs(); }
+    if (d.m) { const id = b.closest('[data-pid]').dataset.pid; dlg.close(); if (d.m === 'copy') { navigator.clipboard?.writeText(location.href.split('#')[0] + '#/p/' + id); return toast('Link copied'); } if (d.m === 'report') return setTimeout(() => reportDlg('post', id), 250); return del(id); }
+    if (d.rep) { await api('/report', { method: 'POST', body: JSON.stringify({ kind: d.k, target: d.t, reason: d.rep }) }); dlg.close(); return toast('Thanks, we’ll review your report'); }
+    if (d.repuser) return me ? reportDlg('user', d.repuser) : openAuth();
+    if ('delacct' in d) { if (!confirm('Delete your account and all your posts forever?')) return; await api('/me', { method: 'DELETE' }); localStorage.clear(); location.hash = '#/'; return location.reload(); }
+    if (d.ra) { const row = b.closest('[data-rid]'); await api('/admin/reports/' + row.dataset.rid, { method: 'POST', body: JSON.stringify({ action: d.ra }) }); collapse(row); return toast('Done'); }
+    if ('ban' in d) { const row = b.closest('[data-uid]'), on = d.banned !== '1'; await api('/admin/users/' + row.dataset.uid, { method: 'POST', body: JSON.stringify({ banned: on }) }); b.dataset.banned = on ? '1' : '0'; b.textContent = on ? 'Unban' : 'Ban'; return toast(on ? 'User banned' : 'User unbanned'); }
+    if ('login' in d) return openAuth();
+    if ('need' in d) { e.preventDefault(); return openAuth(); }
+    if (b?.getAttribute('href') === '#/' && cur === '#/') return scrollTo({ top: 0, behavior: 'smooth' });
+    if ('back' in d) return history.length > 1 ? history.back() : (location.hash = '#/');
+    if ('sw' in d) { reg = !reg; return openAuth(); }
+    if ('out' in d) { localStorage.clear(); location.hash = '#/'; return location.reload(); }
+    if ('compose' in d) return me ? openDlg(`<div class="p-2">${composer()}</div>`) : openAuth();
+    if ('edit' in d) return openDlg(`<form id="ef" class="space-y-3 p-6"><h2 class="text-2xl font-extrabold">Edit profile</h2><input name="name" maxlength="30" value="${esc(me.name)}" placeholder="Name" class="${inp}"><textarea name="bio" maxlength="160" rows="3" placeholder="Bio" class="${inp}">${esc(me.bio)}</textarea><label class="block text-sm text-zinc-400">Profile photo<input name="avatar" type="file" accept="image/*" class="mt-1 block w-full text-sm"></label><label class="block text-sm text-zinc-400">Banner<input name="banner" type="file" accept="image/*" class="mt-1 block w-full text-sm"></label><p class="err text-sm text-red-400"></p><button class="w-full rounded-full bg-white py-2.5 font-bold text-black">Save</button></form>`);
+    if (d.tab) { if (d.tab === 'following' && !me) return openAuth(); tab = d.tab; scrollTo(0, 0); return home(pages[cur].el); }
+    if (b?.classList.contains('sub')) return submit(b.closest('.cmp'));
+    if (d.follow) { if (!me) return openAuth(); const r = await api(`/users/${d.follow}/follow`, { method: 'POST' }); b.outerHTML = fbtn(d.follow, r.isFollowing); return; }
+    if (d.act) {
+      if (!me) return openAuth();
+      const id = art.dataset.id, p = P[id];
+      if (d.act === 'reply') { b.classList.add('a-reply'); return setTimeout(() => openDlg(`<div class="p-2">${composer(id)}</div>`), 200); }
+      if (d.act === 'more') return openDlg(`<div class="p-2" data-pid="${id}">${[['copy', 'Copy link'], ['report', 'Report post'], ...(me.id === p.author?.id || me.admin ? [['del', 'Delete post']] : [])].map(([m, t]) => `<button data-m="${m}" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900 ${m === 'del' ? 'text-red-500' : ''}">${t}</button>`).join('')}</div>`);
+      if (d.act === 'del') { if (!confirm('Delete this post?')) return; await api('/posts/' + id, { method: 'DELETE' }); art.style.cssText = 'opacity:0;transform:translateX(24px);transition:.25s'; return setTimeout(() => document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => a.remove()), 250); }
+      const [k, n] = { like: ['liked', 'likes'], repost: ['reposted', 'reposts'], bookmark: ['bookmarked'] }[d.act];
+      p[k] = !p[k]; if (n) p[n] += p[k] ? 1 : -1; rerender(id); if (p[k]) document.querySelectorAll(`article[data-id="${id}"] [data-act="${d.act}"]`).forEach((x) => x.classList.add('a-' + d.act)); if (d.act === 'bookmark') drop('#/bookmarks');
+      return api(`/posts/${id}/${d.act}`, { method: 'POST' });
+    }
+    if (art && !e.target.closest('a,button')) location.hash = '#/p/' + art.dataset.id;
+  } catch (x) { toast(x.message, 1); }
+});
+document.addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target, body = JSON.stringify(Object.fromEntries(new FormData(f)));
+  try {
+    if (f.id === 'af') { const d = await api('/auth/' + (reg ? 'register' : 'login'), { method: 'POST', body }); localStorage.token = d.token; localStorage.me = JSON.stringify(d.user); location.reload(); }
+    if (f.id === 'pf') { await api('/me/password', { method: 'POST', body }); f.reset(); toast('Password updated'); }
+    if (f.id === 'ef') { me = (await api('/me', { method: 'PATCH', body: new FormData(f) })).user; localStorage.me = JSON.stringify(me); dlg.close(); chrome(); Object.keys(pages).forEach(drop); cur = null; route(); toast('Profile saved'); }
+  } catch (x) { f.querySelector('.err').textContent = x.message; }
+});
+document.addEventListener('input', (e) => { const c = e.target.closest('.cmp'); if (c && e.target.tagName === 'TEXTAREA') c.querySelector('.ct').textContent = 280 - e.target.value.length; });
+document.addEventListener('change', (e) => {
+  const c = e.target.closest('.cmp'); if (!c || e.target.type !== 'file') return;
+  const p = c.querySelector('.pv'), f = e.target.files[0]; p.classList.toggle('hidden', !f); if (f) p.src = URL.createObjectURL(f);
+});
+document.addEventListener('change', (e) => { const s = e.target.closest('[data-badge]'); if (s) api('/admin/users/' + s.closest('[data-uid]').dataset.uid, { method: 'POST', body: JSON.stringify({ badge: s.value }) }).then(() => toast('Badge updated')).catch((x) => toast(x.message, 1)); });
+let gtm; document.addEventListener('input', (e) => { if (e.target.id === 'gq') { clearTimeout(gtm); gtm = setTimeout(() => gifs(e.target.value), 400); } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.target.id === 'sq' || e.target.classList.contains('sq')) && e.target.value.trim()) location.hash = '#/search/' + encodeURIComponent(e.target.value.trim()); });
+addEventListener('hashchange', () => { chrome(); route(); });
+chrome(); route(); sugg(); trend();
+if (token) api('/me').then((d) => { me = d.user; localStorage.me = JSON.stringify(me); chrome(); }).catch(() => {});
+</script>
+</body>
+</html>
