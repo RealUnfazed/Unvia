@@ -86,7 +86,7 @@ const card = (p) => { P[p.id] = p; const a = p.author || {}; return `<article da
     ${p.media ? `<img src="${esc(p.media)}" loading="lazy" class="mt-3 max-h-[510px] w-full rounded-2xl border border-zinc-800 object-cover">` : ''}
     <div class="-ml-2 mt-1 flex max-w-md justify-between text-sm text-zinc-500">
       ${btn('reply', p.replies, 'hover:text-sky-500')}${btn('repost', p.reposts, 'hover:text-emerald-500', p.reposted && 'text-emerald-500')}
-      ${btn('like', p.likes, 'hover:text-pink-600', p.liked && 'text-pink-600', p.liked)}${btn('bookmark', '', 'hover:text-sky-500', p.bookmarked && 'text-sky-500', p.bookmarked)}
+      ${btn('like', p.likes, 'hover:text-pink-600', p.liked && 'text-pink-600', p.liked)}${btn('bookmark', p.saves || '', 'hover:text-sky-500', p.bookmarked && 'text-sky-500', p.bookmarked)}
       ${btn('more', '', 'hover:text-sky-500')}
     </div></div></div></article>`; };
 
@@ -142,8 +142,59 @@ async function admin(v) {
     const d = await api('/admin/overview');
     v.innerHTML = head('Admin panel', 'Manage your platform', false) + `<div class="grid grid-cols-3 gap-2 p-4">${[['Users', d.users], ['Posts', d.posts], ['Open reports', d.openReports]].map(([t, n]) => `<div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4"><div class="text-2xl font-extrabold">${n}</div><div class="text-xs text-zinc-500">${t}</div></div>`).join('')}</div>
     <h2 class="px-4 pt-2 text-xl font-extrabold">Reports</h2>${d.reports.length ? d.reports.map((r) => `<div class="border-b border-zinc-800 p-4" data-rid="${r.id}"><div class="text-sm"><b>${esc(r.reason)}</b> · by @${esc(r.by)}</div><p class="my-2 rounded-xl bg-zinc-900 p-3 text-sm">${esc(r.preview)}</p><div class="flex gap-2">${[['dismiss', 'Dismiss'], ['delete', 'Delete post'], ['ban', 'Ban user']].map(([a, t]) => `<button data-ra="${a}" class="rounded-full border border-zinc-600 px-3 py-1 text-sm hover:bg-zinc-900">${t}</button>`).join('')}</div></div>`).join('') : '<p class="p-6 text-zinc-500">No open reports.</p>'}
-    <h2 class="px-4 pt-4 text-xl font-extrabold">Users &amp; badges</h2>${d.recent.map((u) => `<div class="flex items-center gap-2 border-b border-zinc-800 px-4 py-3" data-uid="${u.id}">${av(u)}<div class="min-w-0 flex-1 truncate"><b>${esc(u.name)}</b>${bdg(u)} <span class="text-zinc-500">@${esc(u.username)}</span></div><select data-badge class="rounded bg-zinc-900 px-2 py-1 text-sm">${['', 'verified', 'business', 'government', 'owner'].map((b) => `<option value="${b}" ${u.badge === b ? 'selected' : ''}>${b || 'no badge'}</option>`).join('')}</select><button data-ban data-banned="${u.banned ? 1 : 0}" class="text-sm text-red-500">${u.banned ? 'Unban' : 'Ban'}</button></div>`).join('')}`;
+    <h2 class="px-4 pt-4 text-xl font-extrabold">Users &amp; badges</h2>${d.recent.map((u) => `<div class="flex items-center gap-2 border-b border-zinc-800 px-4 py-3" data-uid="${u.id}">${av(u)}<div class="min-w-0 flex-1 truncate"><b>${esc(u.name)}</b>${bdg(u)} <span class="text-zinc-500">@${esc(u.username)}</span></div><select data-badge class="rounded bg-zinc-900 px-2 py-1 text-sm">${['', 'verified', 'business', 'government', 'owner'].map((b) => `<option value="${b}" ${u.badge === b ? 'selected' : ''}>${b || 'no badge'}</option>`).join('')}</select><button data-ban data-banned="${u.banned ? 1 : 0}" class="text-sm text-red-500">${u.banned ? 'Unban' : 'Ban'}</button></div>`).join('')}
+    ${me.badge === 'owner' ? growthHTML() : ''}`;
+    if (me.badge === 'owner') loadActive();
   } catch (x) { v.innerHTML = head('Admin panel', '', false) + `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
+}
+
+// ---- Growth tools: owner-only fake followers/likes/reposts/saves/replies ----
+const pidOf = (s) => (s.match(/\/p\/([a-f0-9]{24})/) || [])[1] || s.trim();
+const modePair = (name, cls = 'form') => `<div class="flex gap-4 text-sm"><label class="flex items-center gap-1.5"><input type="radio" name="${name}_mode" value="instant" checked onchange="this.closest('.${cls}').querySelector('.${name}-until').classList.add('hidden')"> Instant</label><label class="flex items-center gap-1.5"><input type="radio" name="${name}_mode" value="gradual" onchange="this.closest('.${cls}').querySelector('.${name}-until').classList.remove('hidden')"> Gradually, over time</label></div><input name="${name}_until" type="datetime-local" class="${name}-until hidden ${inp}">`;
+function growthHTML() {
+  return `<div class="mt-4 space-y-6 border-t border-zinc-800 p-4"><h2 class="flex items-center gap-2 text-xl font-extrabold">Growth tools <span class="rounded bg-zinc-800 px-2 py-0.5 text-xs font-bold text-zinc-400">Owner only</span></h2>
+  <p class="text-sm text-zinc-500">Padded numbers layered on top of real activity. Nobody is notified. Use "Instant" to set a number right now, or "Gradually" to have it climb on its own until a date you pick.</p>
+
+  <form id="ffForm" class="form space-y-2 rounded-2xl border border-zinc-800 p-4">
+    <h3 class="font-bold">Boost your followers</h3>
+    <input name="amount" type="number" min="0" max="50000000" required placeholder="Target follower count, e.g. 1000000" class="${inp}">
+    ${modePair('ff')}
+    <p class="err text-sm text-red-400"></p>
+    <button class="rounded-full bg-sky-500 px-4 py-2 font-bold text-white">Apply to my account</button>
+  </form>
+
+  <form id="peForm" class="form space-y-3 rounded-2xl border border-zinc-800 p-4">
+    <h3 class="font-bold">Boost a post</h3>
+    <input name="post" required placeholder="Post link or ID — use ⋯ → Copy link on the post" class="${inp}">
+    ${['likes', 'reposts', 'saves'].map((k) => `<div class="space-y-1 border-t border-zinc-800 pt-2 first:border-0 first:pt-0"><div class="flex items-center gap-2"><span class="w-16 shrink-0 text-sm capitalize">${k}</span><input name="${k}_amount" type="number" min="0" max="50000000" placeholder="target amount" class="${inp}"></div>${modePair(k)}</div>`).join('')}
+    <p class="err text-sm text-red-400"></p>
+    <button class="rounded-full bg-sky-500 px-4 py-2 font-bold text-white">Apply to post</button>
+  </form>
+
+  <form id="frForm" class="form space-y-2 rounded-2xl border border-zinc-800 p-4">
+    <h3 class="font-bold">Fake replies</h3>
+    <input name="post" required placeholder="Post link or ID" class="${inp}">
+    <textarea name="messages" required rows="4" placeholder="One reply message per line — cycled if you ask for more replies than lines" class="${inp}"></textarea>
+    <input name="count" type="number" min="1" max="500" required placeholder="How many replies (max 500)" class="${inp}">
+    ${modePair('fr')}
+    <p class="err text-sm text-red-400"></p>
+    <button class="rounded-full bg-sky-500 px-4 py-2 font-bold text-white">Create replies</button>
+  </form>
+
+  <div id="active"><h3 class="mb-2 font-bold">Active gradual boosts</h3><p class="text-sm text-zinc-500">Loading…</p></div>
+  </div>`;
+}
+async function loadActive() {
+  const el = $('#active'); if (!el) return;
+  try {
+    const d = await api('/admin/fake/active');
+    const bar = (f) => `<div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800"><div class="h-full bg-sky-500" style="width:${f.target ? Math.min(100, Math.round(f.now / f.target * 100)) : 100}%"></div></div><div class="mt-1 text-xs text-zinc-500">${f.now.toLocaleString()} of ${f.target.toLocaleString()} so far</div>`;
+    const rows = [
+      ...d.users.map((u) => `<div class="rounded-xl border border-zinc-800 p-3 text-sm"><div class="flex items-center justify-between gap-2"><span>@${esc(u.username)} · followers</span><button data-stopf="user" data-stopid="${u.id}" class="shrink-0 rounded-full border border-zinc-600 px-3 py-1 text-xs hover:bg-zinc-900">Stop</button></div>${bar(u)}</div>`),
+      ...d.posts.flatMap((p) => Object.entries(p.fake).map(([k, f]) => `<div class="rounded-xl border border-zinc-800 p-3 text-sm"><div class="flex items-center justify-between gap-2"><span>@${esc(p.author)}'s post · ${k}</span><button data-stopf="post" data-stopid="${p.id}" data-stopkind="${k}" class="shrink-0 rounded-full border border-zinc-600 px-3 py-1 text-xs hover:bg-zinc-900">Stop</button></div>${bar(f)}</div>`)),
+    ];
+    el.innerHTML = `<h3 class="mb-2 font-bold">Active gradual boosts</h3>${rows.length ? `<div class="space-y-2">${rows.join('')}</div>` : '<p class="text-sm text-zinc-500">Nothing running right now.</p>'}`;
+  } catch { el.innerHTML = `<h3 class="mb-2 font-bold">Active gradual boosts</h3><p class="text-sm text-red-400">Couldn’t load.</p>`; }
 }
 
 function feed(el, qs, empty) {
@@ -266,6 +317,7 @@ document.addEventListener('click', async (e) => {
     if ('delacct' in d) { if (!confirm('Delete your account and all your posts forever?')) return; await api('/me', { method: 'DELETE' }); localStorage.clear(); location.hash = '#/'; return location.reload(); }
     if (d.ra) { const row = b.closest('[data-rid]'); await api('/admin/reports/' + row.dataset.rid, { method: 'POST', body: JSON.stringify({ action: d.ra }) }); collapse(row); return toast('Done'); }
     if ('ban' in d) { const row = b.closest('[data-uid]'), on = d.banned !== '1'; await api('/admin/users/' + row.dataset.uid, { method: 'POST', body: JSON.stringify({ banned: on }) }); b.dataset.banned = on ? '1' : '0'; b.textContent = on ? 'Unban' : 'Ban'; return toast(on ? 'User banned' : 'User unbanned'); }
+    if (d.stopf) { await api('/admin/fake/stop', { method: 'POST', body: JSON.stringify({ type: d.stopf, id: d.stopid, kind: d.stopkind }) }); toast('Stopped — frozen at the current number'); return loadActive(); }
     if ('login' in d) return openAuth();
     if ('need' in d) { e.preventDefault(); return openAuth(); }
     if (b?.getAttribute('href') === '#/' && cur === '#/') return scrollTo({ top: 0, behavior: 'smooth' });
@@ -283,7 +335,7 @@ document.addEventListener('click', async (e) => {
       if (d.act === 'reply') { b.classList.add('a-reply'); return setTimeout(() => openDlg(`<div class="p-2">${composer(id)}</div>`), 200); }
       if (d.act === 'more') return openDlg(`<div class="p-2" data-pid="${id}">${[['copy', 'Copy link'], ['report', 'Report post'], ...(me.id === p.author?.id || me.admin ? [['del', 'Delete post']] : [])].map(([m, t]) => `<button data-m="${m}" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900 ${m === 'del' ? 'text-red-500' : ''}">${t}</button>`).join('')}</div>`);
       if (d.act === 'del') { if (!confirm('Delete this post?')) return; await api('/posts/' + id, { method: 'DELETE' }); art.style.cssText = 'opacity:0;transform:translateX(24px);transition:.25s'; return setTimeout(() => document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => a.remove()), 250); }
-      const [k, n] = { like: ['liked', 'likes'], repost: ['reposted', 'reposts'], bookmark: ['bookmarked'] }[d.act];
+      const [k, n] = { like: ['liked', 'likes'], repost: ['reposted', 'reposts'], bookmark: ['bookmarked', 'saves'] }[d.act];
       p[k] = !p[k]; if (n) p[n] += p[k] ? 1 : -1; rerender(id); if (p[k]) document.querySelectorAll(`article[data-id="${id}"] [data-act="${d.act}"]`).forEach((x) => x.classList.add('a-' + d.act)); if (d.act === 'bookmark') drop('#/bookmarks');
       return api(`/posts/${id}/${d.act}`, { method: 'POST' });
     }
@@ -296,6 +348,26 @@ document.addEventListener('submit', async (e) => {
     if (f.id === 'af') { const d = await api('/auth/' + (reg ? 'register' : 'login'), { method: 'POST', body }); localStorage.token = d.token; localStorage.me = JSON.stringify(d.user); location.reload(); }
     if (f.id === 'pf') { await api('/me/password', { method: 'POST', body }); f.reset(); toast('Password updated'); }
     if (f.id === 'ef') { me = (await api('/me', { method: 'PATCH', body: new FormData(f) })).user; localStorage.me = JSON.stringify(me); dlg.close(); chrome(); Object.keys(pages).forEach(drop); cur = null; route(); toast('Profile saved'); }
+    if (f.id === 'ffForm') {
+      await api('/admin/fake/followers', { method: 'POST', body: JSON.stringify({ amount: f.amount.value, mode: f.ff_mode.value, until: f.ff_until.value }) });
+      toast('Follower boost applied'); f.reset(); loadActive();
+      if (cur?.startsWith('#/u/')) { drop(cur); route(); }
+    }
+    if (f.id === 'peForm') {
+      const pid = pidOf(f.post.value); let applied = false, err = '';
+      for (const k of ['likes', 'reposts', 'saves']) {
+        const amt = f[k + '_amount'].value; if (!amt) continue;
+        try { await api('/admin/fake/engagement', { method: 'POST', body: JSON.stringify({ postId: pid, kind: k, amount: amt, mode: f[k + '_mode'].value, until: f[k + '_until'].value }) }); applied = true; }
+        catch (x) { err = x.message; }
+      }
+      if (err) f.querySelector('.err').textContent = err;
+      else if (!applied) f.querySelector('.err').textContent = 'Enter an amount for at least one metric';
+      else { toast('Post boosted'); f.reset(); loadActive(); }
+    }
+    if (f.id === 'frForm') {
+      await api('/admin/fake/replies', { method: 'POST', body: JSON.stringify({ postId: pidOf(f.post.value), messages: f.messages.value, count: f.count.value, mode: f.fr_mode.value, until: f.fr_until.value }) });
+      toast('Fake replies created'); f.reset(); loadActive();
+    }
   } catch (x) { f.querySelector('.err').textContent = x.message; }
 });
 document.addEventListener('input', (e) => { const c = e.target.closest('.cmp'); if (c && e.target.tagName === 'TEXTAREA') c.querySelector('.ct').textContent = 280 - e.target.value.length; });
