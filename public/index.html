@@ -20,13 +20,13 @@ a{transition:background-color .15s,color .15s}
 .skl{position:relative;overflow:hidden}.skl::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);transform:translateX(-100%);animation:sh 1.2s infinite}
 aside{scrollbar-width:none}
 @keyframes heart{0%{transform:scale(1)}30%{transform:scale(.55) rotate(-14deg)}60%{transform:scale(1.55) rotate(8deg)}100%{transform:scale(1)}}
-@keyframes ring{from{transform:scale(.5);opacity:.9}to{transform:scale(2.3);opacity:0}}
 @keyframes spin{to{transform:rotate(360deg) scale(1.15)}}
 @keyframes drip{0%{transform:translateY(0)}30%{transform:translateY(-8px) scaleY(1.2)}60%{transform:translateY(2px) scaleY(.8)}100%{transform:translateY(0)}}
 @keyframes nudge{0%,100%{transform:none}30%{transform:translateX(6px) rotate(-14deg)}60%{transform:translateX(-3px) rotate(9deg)}}
-.a-like svg{animation:heart .55s cubic-bezier(.2,.8,.2,1.4)}.a-like::after{content:"";position:absolute;inset:0;border-radius:9999px;border:2px solid #db2777;animation:ring .5s ease-out forwards;pointer-events:none}
+@keyframes flash{0%{background:rgba(56,189,248,.14)}100%{background:transparent}}
+.a-like svg{animation:heart .55s cubic-bezier(.2,.8,.2,1.4)}
 .a-repost svg{animation:spin .6s cubic-bezier(.3,1.4,.5,1)}.a-bookmark svg{animation:drip .5s ease}.a-reply svg{animation:nudge .5s ease}
-@media (prefers-reduced-motion:reduce){*,::after{animation:none!important;transition:none!important}}
+.flash{animation:flash .8s ease}
 </style>
 </head>
 <body class="min-h-screen bg-black text-zinc-100 antialiased" style="padding-top:env(safe-area-inset-top)">
@@ -60,8 +60,20 @@ const ago = (t) => { const s = (Date.now() - new Date(t)) / 1000; return s < 60 
 const hue = (s) => Math.abs([...(s || '')].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)) % 360;
 const nf = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 const fmt = (n) => nf.format(n || 0); // 1234 -> 1.2K, 106345 -> 106K, 1787778 -> 1.8M — matches X's count style
-let token = localStorage.token, me = JSON.parse(localStorage.me || 'null'), tab = 'all', reg = false, cur;
+let token = localStorage.token, me = JSON.parse(localStorage.me || 'null'), tab = 'all', reg = false, cur, poll;
 const pages = {};
+// Animates a displayed count from its last value to `n`, so climbing followers/likes are visibly moving, not frozen numbers.
+function setCount(el, n) {
+  if (!el) return;
+  const from = +el.dataset.raw || 0, to = +n || 0; el.dataset.raw = to;
+  if (from === to) return void (el.textContent = fmt(to));
+  const t0 = performance.now(), dur = 600;
+  (function step(t) {
+    const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+    el.textContent = fmt(Math.round(from + (to - from) * e));
+    if (p < 1) requestAnimationFrame(step);
+  })(t0);
+}
 
 const I = { reply: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z', repost: 'M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3', heart: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z', mark: 'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z', home: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10', user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', back: 'M19 12H5M12 19l-7-7 7-7', more: 'M5 12h.01M12 12h.01M19 12h.01', sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6', shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3', trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6' };
 const ic = (n, c = '', fill = false) => `<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] ${c}" fill="${fill ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${I[n]}"/></svg>`;
@@ -108,7 +120,7 @@ const openAuth = () => openDlg(`<form id="af" class="space-y-3 p-6"><h2 class="t
 
 const skel = '<div class="skl m-4 h-24 rounded-2xl bg-zinc-900"></div>'.repeat(3);
 const drop = (k) => { pages[k]?.el.remove(); delete pages[k]; };
-const rerender = (id) => document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => (a.outerHTML = card(P[id])));
+const rerender = (id) => { document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => (a.outerHTML = card(P[id]))); document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => a.classList.add('flash')); };
 const ins = (ref, pos, html) => { ref.insertAdjacentHTML(pos, html); (pos === 'afterbegin' ? ref.firstElementChild : ref.nextElementSibling).classList.add('drop'); };
 function toast(m, err) {
   const t = document.createElement('div');
@@ -229,23 +241,47 @@ function home(v) {
   feed(v.querySelector('.f'), 'feed=' + tab, tab === 'following' ? 'Follow people to fill this timeline.' : 'No posts yet. Write the first one.');
 }
 
-async function profile(v, name) {
+async function profile(v, name, pg) {
   let u; try { u = await api('/users/' + name); } catch { return (v.innerHTML = head('Profile') + '<p class="p-10 text-center text-zinc-500">This account doesn’t exist.</p>'); }
   const h = hue(u.username);
-  v.innerHTML = head(esc(u.name), fmt(u.posts) + ' posts') + `<div class="h-36 sm:h-48" style="background:${u.banner ? `url(${esc(u.banner)}) center/cover` : `linear-gradient(120deg,hsl(${h} 50% 25%),hsl(${(h + 60) % 360} 55% 14%))`}"></div>
-  <div class="px-4 pb-3"><div class="-mt-14 flex items-end justify-between">${av(u, 'h-28 w-28 border-4 border-black text-4xl')}${me?.id === u.id ? '<button data-edit class="rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Edit profile</button>' : `<div class="flex gap-2"><button data-repuser="${u.id}" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('more')}</button>${fbtn(u.username, u.isFollowing)}</div>`}</div>
+  v.innerHTML = head(esc(u.name), `<span data-stat="posts" data-raw="${u.posts}">${fmt(u.posts)}</span> posts`) + `<div class="h-36 sm:h-48" style="background:${u.banner ? `url(${esc(u.banner)}) center/cover` : `linear-gradient(120deg,hsl(${h} 50% 25%),hsl(${(h + 60) % 360} 55% 14%))`}"></div>
+  <div class="px-4 pb-3"><div class="-mt-14 flex items-end justify-between">${av(u, 'h-28 w-28 border-4 border-black text-4xl')}<div data-followbox>${me?.id === u.id ? '<button data-edit class="rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Edit profile</button>' : `<div class="flex gap-2"><button data-repuser="${u.id}" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('more')}</button>${fbtn(u.username, u.isFollowing)}</div>`}</div></div>
   <h2 class="mt-2 text-xl font-extrabold">${esc(u.name)}${bdg(u)}</h2><div class="text-zinc-500">@${esc(u.username)}</div>
   ${u.bio ? `<p class="mt-3 whitespace-pre-wrap">${linkify(u.bio)}</p>` : ''}
   <p class="mt-3 text-sm text-zinc-500">Joined ${new Date(u.joined).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>
-  <p class="mt-2 text-sm"><b>${fmt(u.following)}</b> <span class="text-zinc-500">Following</span> &nbsp; <b>${fmt(u.followers)}</b> <span class="text-zinc-500">Followers</span></p></div><div class="border-b border-zinc-800"></div><div class="f"></div>`;
+  <p class="mt-2 text-sm"><b data-stat="following" data-raw="${u.following}">${fmt(u.following)}</b> <span class="text-zinc-500">Following</span> &nbsp; <b data-stat="followers" data-raw="${u.followers}">${fmt(u.followers)}</b> <span class="text-zinc-500">Followers</span></p></div><div class="border-b border-zinc-800"></div><div class="f"></div>`;
   feed(v.querySelector('.f'), 'feed=user:' + u.username, 'No posts yet.');
+  // Live-refreshes stats in place (animated count) instead of leaving numbers frozen at first load — covers real changes and gradual fake boosts alike.
+  pg.refresh = async () => {
+    try {
+      const nu = await api('/users/' + name);
+      setCount(v.querySelector('[data-stat=posts]'), nu.posts);
+      setCount(v.querySelector('[data-stat=following]'), nu.following);
+      setCount(v.querySelector('[data-stat=followers]'), nu.followers);
+      const fb = v.querySelector('[data-follow]');
+      if (fb && me?.id !== nu.id) v.querySelector('[data-followbox]').innerHTML = `<div class="flex gap-2"><button data-repuser="${nu.id}" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('more')}</button>${fbtn(nu.username, nu.isFollowing)}</div>`;
+    } catch {}
+  };
 }
 
-async function thread(v, id) {
+async function thread(v, id, pg) {
   v.innerHTML = head('Post');
   try {
     const d = await api('/posts/' + id);
     v.insertAdjacentHTML('beforeend', (d.parent ? card(d.parent) : '') + card(d.post) + (me ? `<div class="border-b border-zinc-800">${composer(d.post.id)}</div>` : '') + d.replies.map(card).join('') + (d.replies.length ? '' : '<p class="nr p-10 text-center text-zinc-500">No replies yet.</p>'));
+    // Live-refreshes this post's (and its parent's) like/repost/save/reply counts, and reveals any scheduled fake replies as they become visible.
+    pg.refresh = async () => {
+      try {
+        const nd = await api('/posts/' + id);
+        if (nd.parent) { P[nd.parent.id] = nd.parent; rerender(nd.parent.id); }
+        P[nd.post.id] = nd.post; rerender(nd.post.id);
+        if (nd.replies.length > d.replies.length) {
+          v.querySelector('.nr')?.remove();
+          nd.replies.slice(d.replies.length).forEach((r) => { P[r.id] = r; v.insertAdjacentHTML('beforeend', card(r)); v.lastElementChild.classList.add('drop'); });
+          d.replies = nd.replies;
+        }
+      } catch {}
+    };
   } catch { v.insertAdjacentHTML('beforeend', '<p class="p-10 text-center text-zinc-500">This post doesn’t exist.</p>'); }
 }
 
@@ -255,8 +291,8 @@ function route() {
   let pg = pages[h];
   if (!pg) { // pages stay alive once opened, so going back is instant and keeps your scroll position
     const v = document.createElement('div'); v.className = 'pg'; $('#view').append(v); pg = pages[h] = { el: v, y: 0 };
-    if (a === 'u') profile(v, b);
-    else if (a === 'p') thread(v, b);
+    if (a === 'u') profile(v, b, pg);
+    else if (a === 'p') thread(v, b, pg);
     else if (a === 'settings') settings(v);
     else if (a === 'admin') admin(v);
     else if (a === 'search') search(v, decodeURIComponent(b || ''));
@@ -264,7 +300,9 @@ function route() {
     else home(v);
   }
   pg.el.hidden = false; cur = h; scrollTo(0, pg.y);
+  clearInterval(poll); pg.refresh?.(); poll = setInterval(() => pages[cur]?.refresh?.(), 5000);
 }
+addEventListener('visibilitychange', () => !document.hidden && pages[cur]?.refresh?.());
 
 function chrome() {
   const cur = location.hash || '#/', items = [['home', 'Home', '#/'], ['search', 'Search', '#/search'], ['mark', 'Bookmarks', '#/bookmarks'], ['user', 'Profile', me ? '#/u/' + me.username : ''], ...(me ? [['sliders', 'Settings', '#/settings']] : []), ...(me?.admin ? [['shield', 'Admin', '#/admin']] : [])];
