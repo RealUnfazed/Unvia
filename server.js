@@ -99,6 +99,12 @@ app.get('/api/posts', async (req, res) => {
   res.json((await pop(Post.find({ ...f, ...visible }).sort('-createdAt').limit(20))).map((p) => shape(p, me)));
 });
 
+app.get('/api/posts/refresh', async (req, res) => {
+  const ids = String(req.query.ids || '').split(',').filter((x) => /^[a-f0-9]{24}$/.test(x)).slice(0, 150);
+  if (!ids.length) return res.json([]);
+  res.json((await pop(Post.find({ _id: { $in: ids } }))).map((p) => shape(p, req.me)));
+});
+
 app.get('/api/posts/:id', async (req, res) => {
   const p = await pop(Post.findById(req.params.id));
   if (!p) return res.sendStatus(404);

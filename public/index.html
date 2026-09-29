@@ -121,6 +121,12 @@ const openAuth = () => openDlg(`<form id="af" class="space-y-3 p-6"><h2 class="t
 const skel = '<div class="skl m-4 h-24 rounded-2xl bg-zinc-900"></div>'.repeat(3);
 const drop = (k) => { pages[k]?.el.remove(); delete pages[k]; };
 const rerender = (id) => { document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => (a.outerHTML = card(P[id]))); document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => a.classList.add('flash')); };
+// Silently refetches just the posts currently on screen in a feed/search/bookmarks list and updates their counts in place — no reorder, no scroll jump.
+async function refreshVisible(el) {
+  const ids = [...(el?.querySelectorAll('article[data-id]') || [])].map((a) => a.dataset.id);
+  if (!ids.length) return;
+  try { (await api('/posts/refresh?ids=' + ids.join(','))).forEach((p) => { P[p.id] = p; rerender(p.id); }); } catch {}
+}
 const ins = (ref, pos, html) => { ref.insertAdjacentHTML(pos, html); (pos === 'afterbegin' ? ref.firstElementChild : ref.nextElementSibling).classList.add('drop'); };
 function toast(m, err) {
   const t = document.createElement('div');
@@ -226,19 +232,22 @@ function feed(el, qs, empty) {
   new IntersectionObserver((e) => e[0].isIntersecting && more(), { rootMargin: '600px' }).observe(s);
 }
 
-async function search(v, q) {
+async function search(v, q, pg) {
   v.innerHTML = `<div class="sticky top-0 z-10 bg-black/80 p-3 backdrop-blur"><input class="sq w-full rounded-full bg-zinc-900 px-5 py-3 outline-none ring-1 ring-transparent transition focus:ring-sky-500" placeholder="Search people and posts" value="${esc(q)}"></div><div class="r"></div>`;
   const r = v.querySelector('.r'); if (!q) return (r.innerHTML = '<p class="p-10 text-center text-zinc-500">Search people, posts and #hashtags.</p>');
   r.innerHTML = skel;
   try {
     const d = await api('/search?q=' + encodeURIComponent(q));
     r.innerHTML = (d.users.length ? '<h2 class="px-4 pt-3 text-xl font-extrabold">People</h2>' + d.users.map(urow).join('') + '<div class="border-b border-zinc-800"></div>' : '') + d.posts.map(card).join('') + (d.users.length || d.posts.length ? '' : `<p class="p-10 text-center text-zinc-500">No results for “${esc(q)}”.</p>`);
+    pg.refresh = () => refreshVisible(r);
   } catch (x) { r.innerHTML = `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
 }
 
-function home(v) {
+function home(v, pg) {
   v.innerHTML = `<div class="sticky top-0 z-10 bg-black/80 backdrop-blur"><div class="flex border-b border-zinc-800">${[['all', 'For you'], ['following', 'Following']].map(([t, l]) => `<button data-tab="${t}" class="relative flex-1 py-4 text-[15px] hover:bg-zinc-900 ${tab === t ? 'font-bold' : 'text-zinc-500'}">${l}${tab === t ? '<i class="absolute bottom-0 left-1/2 h-1 w-14 -translate-x-1/2 rounded-full bg-sky-500"></i>' : ''}</button>`).join('')}</div></div>${me ? `<div class="hidden border-b border-zinc-800 sm:block">${composer()}</div>` : ''}<div class="f"></div>`;
-  feed(v.querySelector('.f'), 'feed=' + tab, tab === 'following' ? 'Follow people to fill this timeline.' : 'No posts yet. Write the first one.');
+  const f = v.querySelector('.f');
+  feed(f, 'feed=' + tab, tab === 'following' ? 'Follow people to fill this timeline.' : 'No posts yet. Write the first one.');
+  if (pg) pg.refresh = () => refreshVisible(f);
 }
 
 async function profile(v, name, pg) {
@@ -295,9 +304,9 @@ function route() {
     else if (a === 'p') thread(v, b, pg);
     else if (a === 'settings') settings(v);
     else if (a === 'admin') admin(v);
-    else if (a === 'search') search(v, decodeURIComponent(b || ''));
-    else if (a === 'bookmarks') { v.innerHTML = head('Bookmarks', '', false) + (me ? '<div class="f"></div>' : guest()); if (me) feed(v.querySelector('.f'), 'feed=bookmarks', 'Save posts to find them here later.'); }
-    else home(v);
+    else if (a === 'search') search(v, decodeURIComponent(b || ''), pg);
+    else if (a === 'bookmarks') { v.innerHTML = head('Bookmarks', '', false) + (me ? '<div class="f"></div>' : guest()); if (me) { const f = v.querySelector('.f'); feed(f, 'feed=bookmarks', 'Save posts to find them here later.'); pg.refresh = () => refreshVisible(f); } }
+    else home(v, pg);
   }
   pg.el.hidden = false; cur = h; scrollTo(0, pg.y);
   clearInterval(poll); pg.refresh?.(); poll = setInterval(() => pages[cur]?.refresh?.(), 5000);
@@ -366,7 +375,7 @@ document.addEventListener('click', async (e) => {
     if ('out' in d) { localStorage.clear(); location.hash = '#/'; return location.reload(); }
     if ('compose' in d) return me ? openDlg(`<div class="p-2">${composer()}</div>`) : openAuth();
     if ('edit' in d) return openDlg(`<form id="ef" class="space-y-3 p-6"><h2 class="text-2xl font-extrabold">Edit profile</h2><input name="name" maxlength="30" value="${esc(me.name)}" placeholder="Name" class="${inp}"><textarea name="bio" maxlength="160" rows="3" placeholder="Bio" class="${inp}">${esc(me.bio)}</textarea><label class="block text-sm text-zinc-400">Profile photo<input name="avatar" type="file" accept="image/*" class="mt-1 block w-full text-sm"></label><label class="block text-sm text-zinc-400">Banner<input name="banner" type="file" accept="image/*" class="mt-1 block w-full text-sm"></label><p class="err text-sm text-red-400"></p><button class="w-full rounded-full bg-white py-2.5 font-bold text-black">Save</button></form>`);
-    if (d.tab) { if (d.tab === 'following' && !me) return openAuth(); tab = d.tab; scrollTo(0, 0); return home(pages[cur].el); }
+    if (d.tab) { if (d.tab === 'following' && !me) return openAuth(); tab = d.tab; scrollTo(0, 0); return home(pages[cur].el, pages[cur]); }
     if (b?.classList.contains('sub')) return submit(b.closest('.cmp'));
     if (d.follow) { if (!me) return openAuth(); const r = await api(`/users/${d.follow}/follow`, { method: 'POST' }); b.outerHTML = fbtn(d.follow, r.isFollowing); return; }
     if (d.act) {
