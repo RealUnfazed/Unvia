@@ -18,7 +18,7 @@ const User = M('User', {
 const Post = M('Post', {
   author: { type: Id, ref: 'User', index: true }, text: { type: String, maxlength: 280, default: '' },
   media: { url: String, fileId: String }, likes: [Id], reposts: [Id], replies: { type: Number, default: 0 }, saves: { type: Number, default: 0 },
-  parent: { type: Id, index: true }, repostOf: { type: Id, ref: 'Post' }, visibleAt: Date,
+  parent: { type: Id, index: true }, repostOf: { type: Id, ref: 'Post' }, quoteOf: { type: Id, ref: 'Post' }, quoteDeleted: Boolean, quotes: { type: Number, default: 0 }, visibleAt: Date,
   fake: { likes: mongoose.Schema.Types.Mixed, reposts: mongoose.Schema.Types.Mixed, saves: mongoose.Schema.Types.Mixed },
 });
 
@@ -36,14 +36,15 @@ function fakeVal(f) {
 // Posts scheduled to appear later (fake replies spread over time) are hidden from lists until their moment arrives.
 const visible = { $or: [{ visibleAt: null }, { visibleAt: { $exists: false } }, { visibleAt: { $lte: new Date() } }] };
 const pub = (u) => ({ id: u.id, username: u.username, name: u.name, bio: u.bio, avatar: u.avatar, banner: u.banner, badge: u.badge, admin: !!u.admin });
-const pop = (q) => q.populate('author').populate({ path: 'repostOf', populate: { path: 'author' } });
+const pop = (q) => q.populate('author').populate({ path: 'repostOf', populate: { path: 'author' } }).populate({ path: 'quoteOf', populate: { path: 'author' } });
 const shape = (p, me) => {
   const o = p.repostOf?.author ? p.repostOf : p;
   return {
     id: o.id, text: o.text, media: o.media?.url, at: o.createdAt, author: o.author && pub(o.author),
     likes: o.likes.length + fakeVal(o.fake?.likes), liked: !!me && has(o.likes, me.id),
-    reposts: o.reposts.length + fakeVal(o.fake?.reposts), reposted: !!me && has(o.reposts, me.id),
+    reposts: o.reposts.length + (o.quotes || 0) + fakeVal(o.fake?.reposts), reposted: !!me && has(o.reposts, me.id),
     replies: o.replies, bookmarked: !!me && has(me.bookmarks, o.id), saves: (o.saves || 0) + fakeVal(o.fake?.saves),
+    quoted: o.quoteOf ? { id: o.quoteOf.id, text: o.quoteOf.text, media: o.quoteOf.media?.url, at: o.quoteOf.createdAt, author: o.quoteOf.author && pub(o.quoteOf.author) } : (o.quoteDeleted ? { deleted: true } : null),
     repostBy: p === o ? null : pub(p.author), feedAt: p.createdAt,
   };
 };
@@ -114,7 +115,7 @@ app.get('/api/posts/:id', async (req, res) => {
 
 app.post('/api/posts', auth, upload.single('image'), async (req, res) => {
   const text = (req.body.text || '').trim();
-  if (!text && !req.file && !req.body.gif) return res.status(400).json({ error: 'Write something or add an image' });
+  if (!text && !req.file && !req.body.gif && !req.body.quote) return res.status(400).json({ error: 'Write something or add an image' });
   let media;
   if (req.file) { // image goes to PostFile server-side so the key stays secret
     if (!req.file.mimetype.startsWith('image/')) return res.status(400).json({ error: 'Only images are supported' });
@@ -127,7 +128,9 @@ app.post('/api/posts', auth, upload.single('image'), async (req, res) => {
   }
   if (!req.file && req.body.gif) { try { if (new URL(req.body.gif).hostname.endsWith('giphy.com')) media = { url: req.body.gif }; } catch {} }
   const parent = req.body.parent || undefined;
-  const p = await Post.create({ author: req.me._id, text, media, parent });
+  const quoteOf = /^[a-f0-9]{24}$/.test(req.body.quote || '') && (await Post.exists({ _id: req.body.quote })) ? req.body.quote : undefined;
+  const p = await Post.create({ author: req.me._id, text, media, parent, quoteOf });
+  if (quoteOf) await Post.updateOne({ _id: quoteOf }, { $inc: { quotes: 1 } });
   if (parent) await Post.updateOne({ _id: parent }, { $inc: { replies: 1 } });
   res.json(shape(await pop(Post.findById(p.id)), req.me));
 });
@@ -160,7 +163,9 @@ app.delete('/api/posts/:id', auth, async (req, res) => {
   const p = await Post.findOneAndDelete(req.me.admin ? { _id: req.params.id } : { _id: req.params.id, author: req.me._id });
   if (!p) return res.sendStatus(404);
   await Post.deleteMany({ repostOf: p._id });
+  await Post.updateMany({ quoteOf: p._id }, { quoteDeleted: true });
   if (p.parent) await Post.updateOne({ _id: p.parent }, { $inc: { replies: -1 } });
+  if (p.quoteOf) await Post.updateOne({ _id: p.quoteOf }, { $inc: { quotes: -1 } });
   if (p.media?.fileId) await fetch(`${PF}/files/${p.media.fileId}`, { method: 'DELETE', headers: pfH }).catch(() => {});
   res.json({ ok: true });
 });
@@ -233,7 +238,7 @@ app.get('/api/admin/overview', adm, async (req, res) => {
 app.post('/api/admin/reports/:id', adm, async (req, res) => {
   const r = await Report.findById(req.params.id).populate('post'); if (!r) return res.sendStatus(404);
   const a = req.body.action;
-  if (a === 'delete' && r.post) await Post.deleteMany({ $or: [{ _id: r.post._id }, { repostOf: r.post._id }] });
+  if (a === 'delete' && r.post) { await Post.deleteMany({ $or: [{ _id: r.post._id }, { repostOf: r.post._id }] }); await Post.updateMany({ quoteOf: r.post._id }, { quoteDeleted: true }); }
   if (a === 'ban') await User.updateOne({ _id: r.user || r.post?.author, admin: { $ne: true } }, { banned: true });
   r.status = a === 'dismiss' ? 'dismissed' : 'actioned'; await r.save(); res.json({ ok: true });
 });

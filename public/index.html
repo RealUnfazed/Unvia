@@ -108,21 +108,26 @@ const btn = (act, n, h, on = '', fill = false) => `<button data-act="${act}" cla
 const guest = () => '<div class="p-10 text-center"><p class="mb-4 text-zinc-400">Log in to see this.</p><button data-login class="rounded-full bg-sky-500 px-6 py-2 font-bold text-white">Log in</button></div>';
 const head = (t, sub = '', back = true) => `<div class="sticky top-0 z-10 flex items-center gap-6 bg-black/80 px-4 py-2 backdrop-blur">${back ? `<button data-back class="rounded-full p-2 hover:bg-zinc-900">${ic('back')}</button>` : ''}<div><h1 class="text-xl font-bold leading-tight">${t}</h1>${sub ? `<div class="text-xs text-zinc-500">${sub}</div>` : ''}</div></div>`;
 
+const quoteEmbed = (q) => q.deleted
+  ? '<div class="mt-3 rounded-2xl border border-zinc-800 p-3 text-sm text-zinc-500">This post was deleted.</div>'
+  : `<button type="button" data-qlink="${q.id}" class="mt-3 block w-full rounded-2xl border border-zinc-800 p-3 text-left transition-colors hover:bg-white/[.04]"><div class="flex items-center gap-1 text-sm"><b class="truncate">${esc(q.author?.name)}</b>${bdg(q.author)}<span class="truncate text-zinc-500">@${esc(q.author?.username)} · ${ago(q.at)}</span></div>${q.text ? `<p class="mt-1 line-clamp-4 whitespace-pre-wrap break-words text-[15px]">${esc(q.text)}</p>` : ''}${q.media ? `<img src="${esc(q.media)}" loading="lazy" class="mt-2 max-h-64 w-full rounded-xl object-cover">` : ''}</button>`;
 const card = (p) => { P[p.id] = p; const a = p.author || {}; return `<article data-id="${p.id}" class="cursor-pointer border-b border-zinc-800 px-4 pb-1 pt-3 transition-colors hover:bg-white/[.03]">
   ${p.repostBy ? `<div class="mb-1 ml-12 flex items-center gap-2 text-xs font-bold text-zinc-500">${ic('repost', '!h-3.5 !w-3.5')}${esc(p.repostBy.name)} reposted</div>` : ''}
   <div class="flex gap-3">${av(a)}<div class="min-w-0 flex-1">
     <div class="flex gap-1 text-[15px]"><a href="#/u/${esc(a.username)}" class="truncate font-bold hover:underline">${esc(a.name)}${bdg(a)}</a><span class="truncate text-zinc-500">@${esc(a.username)} · ${ago(p.at)}</span></div>
     <p class="whitespace-pre-wrap break-words text-[15px]">${linkify(p.text)}</p>
     ${p.media ? `<img src="${esc(p.media)}" loading="lazy" class="mt-3 max-h-[510px] w-full rounded-2xl border border-zinc-800 object-cover">` : ''}
+    ${p.quoted ? quoteEmbed(p.quoted) : ''}
     <div class="-ml-2 mt-1 flex max-w-md justify-between text-sm text-zinc-500">
       ${btn('reply', p.replies, 'hover:text-sky-500')}${btn('repost', p.reposts, 'hover:text-emerald-500', p.reposted && 'text-emerald-500')}
       ${btn('like', p.likes, 'hover:text-pink-600', p.liked && 'text-pink-600', p.liked)}${btn('bookmark', p.saves || '', 'hover:text-sky-500', p.bookmarked && 'text-sky-500', p.bookmarked)}
       ${btn('more', '', 'hover:text-sky-500')}
     </div></div></div></article>`; };
 
-const composer = (parent = '') => `<div class="cmp flex gap-3 p-4" data-parent="${parent}">${av(me)}<div class="min-w-0 flex-1">
-  <textarea maxlength="280" rows="2" placeholder="${parent ? 'Post your reply' : "What's happening?"}" class="w-full resize-none bg-transparent text-xl outline-none placeholder:text-zinc-500"></textarea>
+const composer = (parent = '', quote = '') => `<div class="cmp flex gap-3 p-4" data-parent="${parent}" data-quote="${quote}">${av(me)}<div class="min-w-0 flex-1">
+  <textarea maxlength="280" rows="2" placeholder="${parent ? 'Post your reply' : quote ? 'Add a comment' : "What's happening?"}" class="w-full resize-none bg-transparent text-xl outline-none placeholder:text-zinc-500"></textarea>
   <img class="pv mb-2 hidden max-h-64 rounded-2xl">
+  ${quote && P[quote] ? quoteEmbed({ ...P[quote], id: '' }).replace('type="button" data-qlink=""', 'type="button" tabindex="-1"') : ''}
   <div class="flex items-center justify-between border-t border-zinc-800 pt-3"><label class="cursor-pointer text-sm font-semibold text-sky-500 hover:text-sky-400">Add image<input type="file" accept="image/*" class="hidden"></label><button type="button" data-gifopen class="ml-4 rounded border border-sky-500 px-1.5 text-xs font-bold text-sky-500 hover:bg-sky-500/10">GIF</button>
   <div class="flex items-center gap-3"><span class="ct text-sm text-zinc-500">280</span><button class="sub rounded-full bg-sky-500 px-5 py-1.5 font-bold text-white disabled:opacity-50">${parent ? 'Reply' : 'Post'}</button></div></div></div></div>`;
 
@@ -369,7 +374,7 @@ async function trend() {
 
 async function submit(c) {
   const b = c.querySelector('.sub'), ta = c.querySelector('textarea'), fi = c.querySelector('input[type=file]'), pid = c.dataset.parent, fd = new FormData();
-  fd.append('text', ta.value); if (pid) fd.append('parent', pid); if (fi.files[0]) fd.append('image', fi.files[0]); else if (c.dataset.gif) fd.append('gif', c.dataset.gif);
+  fd.append('text', ta.value); if (pid) fd.append('parent', pid); if (c.dataset.quote) fd.append('quote', c.dataset.quote); if (fi.files[0]) fd.append('image', fi.files[0]); else if (c.dataset.gif) fd.append('gif', c.dataset.gif);
   b.disabled = true;
   try {
     const p = await api('/posts', { method: 'POST', body: fd }), inDlg = !!c.closest('dialog');
@@ -381,6 +386,7 @@ async function submit(c) {
       const tc = inDlg ? document.querySelector(`.pg:not([hidden]) .cmp[data-parent="${pid}"]`) : c;
       if (tc) { tc.closest('.pg').querySelector('.nr')?.remove(); ins(tc.parentElement, 'afterend', card(p)); }
     } else { const f = pages['#/']?.el.querySelector('.f'); if (f) ins(f, 'afterbegin', card(p)); }
+    const qid = c.dataset.quote; if (qid && P[qid]) { P[qid].reposts++; rerender(qid); }
     toast(pid ? 'Your reply was sent' : 'Your post was sent'); trend();
   } catch (x) { toast(x.message, 1); }
   b.disabled = false;
@@ -394,6 +400,14 @@ document.addEventListener('click', async (e) => {
     const gi = e.target.closest('img[data-gif]');
     if (gi) { gt.dataset.gif = gi.dataset.gif; const pv = gt.querySelector('.pv'); pv.src = gi.dataset.gif; pv.classList.remove('hidden'); gt.querySelector('input[type=file]').value = ''; return gd.close(); }
     if ('gifopen' in d) { gt = b.closest('.cmp'); gd.showModal(); return gifs(); }
+    if (d.qlink) return void (location.hash = '#/p/' + d.qlink);
+    if (d.rq) {
+      const id = b.closest('[data-pid]').dataset.pid, p = P[id];
+      if (d.rq === 'quote') return openDlg(`<div class="p-2">${composer('', id)}</div>`);
+      dlg.close(); p.reposted = !p.reposted; p.reposts += p.reposted ? 1 : -1; rerender(id);
+      if (p.reposted) document.querySelectorAll(`article[data-id="${id}"] [data-act="repost"]`).forEach((x) => x.classList.add('a-repost'));
+      return api(`/posts/${id}/repost`, { method: 'POST' });
+    }
     if (d.m) { const id = b.closest('[data-pid]').dataset.pid; dlg.close(); if (d.m === 'copy') { navigator.clipboard?.writeText(location.href.split('#')[0] + '#/p/' + id); return toast('Link copied'); } if (d.m === 'report') return setTimeout(() => reportDlg('post', id), 250); return del(id); }
     if (d.rep) { await api('/report', { method: 'POST', body: JSON.stringify({ kind: d.k, target: d.t, reason: d.rep }) }); dlg.close(); return toast('Thanks, we’ll review your report'); }
     if (d.repuser) return me ? reportDlg('user', d.repuser) : openAuth();
@@ -415,6 +429,7 @@ document.addEventListener('click', async (e) => {
     if (d.act) {
       if (!me) return openAuth();
       const id = art.dataset.id, p = P[id];
+      if (d.act === 'repost') return openDlg(`<div class="p-2" data-pid="${id}"><button data-rq="toggle" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900">${p.reposted ? 'Undo repost' : 'Repost'}</button><button data-rq="quote" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900">Quote</button></div>`);
       if (d.act === 'reply') { b.classList.add('a-reply'); return setTimeout(() => openDlg(`<div class="p-2">${composer(id)}</div>`), 200); }
       if (d.act === 'more') return openDlg(`<div class="p-2" data-pid="${id}">${[['copy', 'Copy link'], ['report', 'Report post'], ...(me.id === p.author?.id || me.admin ? [['del', 'Delete post']] : [])].map(([m, t]) => `<button data-m="${m}" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900 ${m === 'del' ? 'text-red-500' : ''}">${t}</button>`).join('')}</div>`);
       if (d.act === 'del') { if (!confirm('Delete this post?')) return; await api('/posts/' + id, { method: 'DELETE' }); art.style.cssText = 'opacity:0;transform:translateX(24px);transition:.25s'; return setTimeout(() => document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => a.remove()), 250); }
