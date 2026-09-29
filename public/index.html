@@ -73,7 +73,7 @@ function fmt(n) {
   }
   return neg + abs.toLocaleString('en-US');
 }
-let token = localStorage.token, me = JSON.parse(localStorage.me || 'null'), tab = 'all', reg = false, cur, poll;
+let token = localStorage.token, me = JSON.parse(localStorage.me || 'null'), tab = 'all', reg = false, cur, poll, unread = 0;
 const pages = {};
 // Smoothly counts from the last displayed value to `n`, formatting at every frame — always a real number mid-flight, never a mismatched unit like a stray "K" flashing before an "M".
 function animateCount(el, n) {
@@ -91,7 +91,7 @@ function animateCount(el, n) {
   el._raf = requestAnimationFrame(step);
 }
 
-const I = { reply: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z', repost: 'M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3', heart: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z', mark: 'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z', home: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10', user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', back: 'M19 12H5M12 19l-7-7 7-7', more: 'M5 12h.01M12 12h.01M19 12h.01', sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6', shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3', trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6' };
+const I = { reply: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z', repost: 'M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3', heart: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z', mark: 'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z', home: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10', user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', back: 'M19 12H5M12 19l-7-7 7-7', bell: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0', pin: 'M12 17v5M9 3h6l-1 7 3 3v2H7v-2l3-3z', more: 'M5 12h.01M12 12h.01M19 12h.01', sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6', shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3', trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6' };
 const ic = (n, c = '', fill = false) => `<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] ${c}" fill="${fill ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${I[n]}"/></svg>`;
 
 async function api(path, o = {}) {
@@ -112,6 +112,7 @@ const quoteEmbed = (q) => q.deleted
   ? '<div class="mt-3 rounded-2xl border border-zinc-800 p-3 text-sm text-zinc-500">This post was deleted.</div>'
   : `<button type="button" data-qlink="${q.id}" class="mt-3 block w-full rounded-2xl border border-zinc-800 p-3 text-left transition-colors hover:bg-white/[.04]"><div class="flex items-center gap-1 text-sm"><b class="truncate">${esc(q.author?.name)}</b>${bdg(q.author)}<span class="truncate text-zinc-500">@${esc(q.author?.username)} · ${ago(q.at)}</span></div>${q.text ? `<p class="mt-1 line-clamp-4 whitespace-pre-wrap break-words text-[15px]">${esc(q.text)}</p>` : ''}${q.media ? `<img src="${esc(q.media)}" loading="lazy" class="mt-2 max-h-64 w-full rounded-xl object-cover">` : ''}</button>`;
 const card = (p) => { P[p.id] = p; const a = p.author || {}; return `<article data-id="${p.id}" class="cursor-pointer border-b border-zinc-800 px-4 pb-1 pt-3 transition-colors hover:bg-white/[.03]">
+  ${p.pinned ? `<div class="mb-1 ml-12 flex items-center gap-2 text-xs font-bold text-zinc-500">${ic('pin', '!h-3.5 !w-3.5')}Pinned</div>` : ''}
   ${p.repostBy ? `<div class="mb-1 ml-12 flex items-center gap-2 text-xs font-bold text-zinc-500">${ic('repost', '!h-3.5 !w-3.5')}${esc(p.repostBy.name)} reposted</div>` : ''}
   <div class="flex gap-3">${av(a)}<div class="min-w-0 flex-1">
     <div class="flex gap-1 text-[15px]"><a href="#/u/${esc(a.username)}" class="truncate font-bold hover:underline">${esc(a.name)}${bdg(a)}</a><span class="truncate text-zinc-500">@${esc(a.username)} · ${ago(p.at)}</span></div>
@@ -162,7 +163,7 @@ function syncCounts(p) {
 async function refreshVisible(el) {
   const ids = [...(el?.querySelectorAll('article[data-id]') || [])].map((a) => a.dataset.id);
   if (!ids.length) return;
-  try { (await api('/posts/refresh?ids=' + ids.join(','))).forEach((p) => { P[p.id] = p; syncCounts(p); }); } catch {}
+  try { (await api('/posts/refresh?ids=' + ids.join(','))).forEach((p) => { const o = P[p.id] || {}; P[p.id] = { ...p, pinned: o.pinned, repostBy: o.repostBy }; syncCounts(P[p.id]); }); } catch {}
 }
 const ins = (ref, pos, html) => { ref.insertAdjacentHTML(pos, html); (pos === 'afterbegin' ? ref.firstElementChild : ref.nextElementSibling).classList.add('drop'); };
 function toast(m, err) {
@@ -180,6 +181,13 @@ const collapse = (el) => {
   requestAnimationFrame(() => requestAnimationFrame(() => { el.style.cssText += ';height:0;padding-top:0;padding-bottom:0;opacity:0;transform:translateX(60px) rotate(3deg);border-width:0'; }));
   setTimeout(() => el.remove(), 520);
 };
+async function relate(kind, username) {
+  try {
+    const r = await api(`/users/${username}/${kind}`, { method: 'POST' }), on = r.muted ?? r.blocked;
+    Object.keys(pages).forEach(drop); cur = null; route(); sugg();
+    toast(`${on ? (kind === 'mute' ? 'Muted' : 'Blocked') : (kind === 'mute' ? 'Unmuted' : 'Unblocked')} @${username}`);
+  } catch (x) { toast(x.message, 1); }
+}
 async function del(id) { if (!confirm('Delete this post?')) return; try { await api('/posts/' + id, { method: 'DELETE' }); document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => collapse(a)); toast('Post deleted'); } catch (x) { toast(x.message, 1); } }
 const reportDlg = (kind, id) => openDlg(`<div class="p-4"><h2 class="mb-2 text-xl font-extrabold">Report ${kind}</h2><p class="mb-2 text-sm text-zinc-500">What’s going on?</p>${['Spam', 'Abuse or harassment', 'Hate or discrimination', 'Violence or threats', 'Misinformation', 'Something else'].map((r) => `<button data-rep="${r}" data-k="${kind}" data-t="${id}" class="block w-full rounded-xl px-4 py-3 text-left hover:bg-zinc-900">${r}</button>`).join('')}</div>`);
 async function gifs(q = '') {
@@ -255,12 +263,15 @@ async function loadActive() {
 }
 
 function feed(el, qs, empty) {
+  if (el.nextElementSibling?.classList.contains('sent')) el.nextElementSibling.remove();
+  const fid = (el._fid = {}); // switching profile tabs invalidates any in-flight load
   let before = '', done = false, busy = false;
-  const s = document.createElement('div'); s.className = 'min-h-[6rem]'; s.innerHTML = skel; el.after(s);
+  const s = document.createElement('div'); s.className = 'sent min-h-[6rem]'; s.innerHTML = skel; el.after(s);
   const more = async () => {
     if (busy || done) return; busy = true; if (before) s.innerHTML = skel;
     try {
       const ps = await api(`/posts?${qs}${before ? '&before=' + encodeURIComponent(before) : ''}`);
+      if (el._fid !== fid) return;
       el.insertAdjacentHTML('beforeend', ps.map(card).join(''));
       if (ps.length < 20) { done = true; s.innerHTML = el.children.length ? '' : `<p class="p-10 text-center text-zinc-500">${empty}</p>`; } else { before = ps.at(-1).feedAt; s.innerHTML = ''; }
     } catch (x) { done = true; s.innerHTML = `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
@@ -287,17 +298,24 @@ function home(v, pg) {
   if (pg) pg.refresh = () => refreshVisible(f);
 }
 
+const PT = [['user', 'Posts'], ['replies', 'Replies'], ['media', 'Media'], ['likes', 'Likes']];
+const PE = { user: 'No posts yet.', replies: 'No replies yet.', media: 'No photos or GIFs yet.', likes: 'Posts you like will show up here.' };
+const ptabs = (uid, on) => `<div class="flex border-b border-zinc-800">${PT.filter(([k]) => k !== 'likes' || me?.id === uid).map(([k, l]) => `<button data-ptab="${k}" class="relative flex-1 py-4 text-[15px] hover:bg-zinc-900 ${on === k ? 'font-bold' : 'text-zinc-500'}">${l}${on === k ? '<i class="absolute bottom-0 left-1/2 h-1 w-12 -translate-x-1/2 rounded-full bg-sky-500"></i>' : ''}</button>`).join('')}</div>`;
+const ctl = (u) => me?.id === u.id ? '<button data-edit class="rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Edit profile</button>'
+  : `<div class="flex gap-2"><button data-repuser="${u.id}" data-un="${esc(u.username)}" data-muted="${u.muted ? 1 : 0}" data-blocked="${u.blocked ? 1 : 0}" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('more')}</button>${u.blockedBy ? '' : u.blocked ? `<button data-block="${esc(u.username)}" class="rounded-full bg-red-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-red-500">Blocked</button>` : fbtn(u.username, u.isFollowing)}</div>`;
+
 async function profile(v, name, pg) {
   let u; try { u = await api('/users/' + name); } catch { return (v.innerHTML = head('Profile') + '<p class="p-10 text-center text-zinc-500">This account doesn’t exist.</p>'); }
-  const h = hue(u.username);
+  const h = hue(u.username); v.dataset.user = u.username; v.dataset.uid = u.id;
   v.innerHTML = head(esc(u.name), `<span data-stat="posts" data-val="${u.posts}">${fmt(u.posts)}</span> posts`) + `<div class="h-36 sm:h-48" style="background:${u.banner ? `url(${esc(u.banner)}) center/cover` : `linear-gradient(120deg,hsl(${h} 50% 25%),hsl(${(h + 60) % 360} 55% 14%))`}"></div>
-  <div class="px-4 pb-3"><div class="-mt-14 flex items-end justify-between">${av(u, 'h-28 w-28 border-4 border-black text-4xl')}<div data-followbox>${me?.id === u.id ? '<button data-edit class="rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Edit profile</button>' : `<div class="flex gap-2"><button data-repuser="${u.id}" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('more')}</button>${fbtn(u.username, u.isFollowing)}</div>`}</div></div>
+  <div class="px-4 pb-3"><div class="-mt-14 flex items-end justify-between">${av(u, 'h-28 w-28 border-4 border-black text-4xl')}<div data-followbox>${ctl(u)}</div></div>
   <h2 class="mt-2 text-xl font-extrabold">${esc(u.name)}${bdg(u)}</h2><div class="text-zinc-500">@${esc(u.username)}</div>
   ${u.bio ? `<p class="mt-3 whitespace-pre-wrap">${linkify(u.bio)}</p>` : ''}
   <p class="mt-3 text-sm text-zinc-500">Joined ${new Date(u.joined).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>
-  <p class="mt-2 text-sm"><b data-stat="following" data-val="${u.following}">${fmt(u.following)}</b> <span class="text-zinc-500">Following</span> &nbsp; <b data-stat="followers" data-val="${u.followers}">${fmt(u.followers)}</b> <span class="text-zinc-500">Followers</span></p></div><div class="border-b border-zinc-800"></div><div class="f"></div>`;
+  <p class="mt-2 text-sm"><a href="#/u/${esc(u.username)}/following" class="hover:underline"><b data-stat="following" data-val="${u.following}">${fmt(u.following)}</b> <span class="text-zinc-500">Following</span></a> &nbsp; <a href="#/u/${esc(u.username)}/followers" class="hover:underline"><b data-stat="followers" data-val="${u.followers}">${fmt(u.followers)}</b> <span class="text-zinc-500">Followers</span></a></p></div>`
+  + (u.blockedBy ? `<div class="border-t border-zinc-800 p-10 text-center text-zinc-500">@${esc(u.username)} blocked you. You can’t follow them or see their posts.</div>` : `<div class="ptabs">${ptabs(u.id, 'user')}</div><div class="f"></div>`);
   const f = v.querySelector('.f');
-  feed(f, 'feed=user:' + u.username, 'No posts yet.');
+  if (f) feed(f, 'feed=user:' + u.username, PE.user);
   // Live-refreshes stats in place (animated count) instead of leaving numbers frozen at first load — covers real changes and gradual fake boosts alike.
   pg.refresh = async () => {
     try {
@@ -305,11 +323,46 @@ async function profile(v, name, pg) {
       animateCount(v.querySelector('[data-stat=posts]'), nu.posts);
       animateCount(v.querySelector('[data-stat=following]'), nu.following);
       animateCount(v.querySelector('[data-stat=followers]'), nu.followers);
-      const fb = v.querySelector('[data-follow]');
-      if (fb && me?.id !== nu.id) v.querySelector('[data-followbox]').innerHTML = `<div class="flex gap-2"><button data-repuser="${nu.id}" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('more')}</button>${fbtn(nu.username, nu.isFollowing)}</div>`;
+      if (me?.id !== nu.id && !nu.blockedBy) v.querySelector('[data-followbox]').innerHTML = ctl(nu);
     } catch {}
-    refreshVisible(f); // this profile's own posts (likes/reposts/replies/saves) were being skipped — now included
+    if (f) refreshVisible(f);
   };
+}
+
+// Followers / Following lists
+async function people(v, name, kind, pg) {
+  const tabs = ['followers', 'following'].map((k) => `<a href="#/u/${esc(name)}/${k}" class="relative flex-1 py-4 text-center text-[15px] hover:bg-zinc-900 ${kind === k ? 'font-bold' : 'text-zinc-500'}">${k[0].toUpperCase() + k.slice(1)}${kind === k ? '<i class="absolute bottom-0 left-1/2 h-1 w-12 -translate-x-1/2 rounded-full bg-sky-500"></i>' : ''}</a>`).join('');
+  v.innerHTML = head('@' + esc(name)) + `<div class="flex border-b border-zinc-800">${tabs}</div><div class="ul">${skel}</div>`;
+  const l = v.querySelector('.ul'); let sig = null;
+  const load = async () => {
+    try {
+      const us = await api(`/users/${name}/${kind}`), nsig = us.map((x) => x.id + x.isFollowing).join();
+      if (nsig === sig) return; sig = nsig;
+      l.innerHTML = us.length ? us.map(urow).join('') : `<p class="p-10 text-center text-zinc-500">${kind === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}</p>`;
+    } catch (x) { l.innerHTML = `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
+  };
+  await load(); pg.refresh = load;
+}
+
+// Notifications
+const NT = { like: ['heart', 'text-pink-500', 'liked your post'], repost: ['repost', 'text-emerald-500', 'reposted your post'], reply: ['reply', 'text-sky-500', 'replied to your post'], quote: ['repost', 'text-emerald-500', 'quoted your post'], mention: ['reply', 'text-sky-500', 'mentioned you'], follow: ['user', 'text-sky-500', 'followed you'] };
+const nrow = (n) => { const [i, c, t] = NT[n.type] || NT.mention; return `<div data-nlink="${n.post ? '#/p/' + n.post.id : '#/u/' + esc(n.from.username)}" class="flex cursor-pointer gap-3 border-b border-zinc-800 px-4 py-3 transition-colors hover:bg-white/[.03] ${n.read ? '' : 'bg-sky-500/[.07]'}"><div class="w-8 shrink-0 pt-1 ${c}">${ic(i, '!h-6 !w-6', n.type === 'like')}</div><div class="min-w-0 flex-1">${av(n.from, 'h-8 w-8 text-sm')}<p class="mt-2 text-[15px]"><a href="#/u/${esc(n.from.username)}" class="font-bold hover:underline">${esc(n.from.name)}</a>${bdg(n.from)} ${t}</p>${n.post?.text ? `<p class="mt-1 line-clamp-3 text-sm text-zinc-500">${esc(n.post.text)}</p>` : n.post?.media ? '<p class="mt-1 text-sm text-zinc-500">[image]</p>' : ''}<div class="mt-1 text-xs text-zinc-600">${ago(n.at)}</div></div></div>`; };
+async function notifications(v, pg) {
+  if (!me) return void (v.innerHTML = head('Notifications', '', false) + guest());
+  v.innerHTML = head('Notifications', '', false) + `<div class="nl">${skel}</div>`;
+  const l = v.querySelector('.nl'); let sig = null;
+  const load = async () => {
+    try {
+      const ns = await api('/notifications'), nsig = ns.map((n) => n.id + n.read).join();
+      if (nsig !== sig) { sig = nsig; l.innerHTML = ns.length ? ns.map(nrow).join('') : '<p class="p-10 text-center text-zinc-500">Nothing yet. Likes, reposts, replies, mentions and new followers show up here.</p>'; }
+      if (ns.some((n) => !n.read)) { await api('/notifications/read', { method: 'POST' }); if (unread) { unread = 0; chrome(); } }
+    } catch (x) { if (sig === null) l.innerHTML = `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
+  };
+  await load(); pg.refresh = load;
+}
+async function pollUnread() {
+  if (!token) return;
+  try { const d = await api('/notifications/count'); if (d.unread !== unread) { unread = d.unread; chrome(); } } catch {}
 }
 
 async function thread(v, id, pg) {
@@ -334,12 +387,13 @@ async function thread(v, id, pg) {
 }
 
 function route() {
-  const h = location.hash || '#/', [, a, b] = h.slice(1).split('/');
+  const h = location.hash || '#/', [, a, b, c] = h.slice(1).split('/');
   if (cur && pages[cur]) { pages[cur].y = scrollY; pages[cur].el.hidden = true; }
   let pg = pages[h];
   if (!pg) { // pages stay alive once opened, so going back is instant and keeps your scroll position
     const v = document.createElement('div'); v.className = 'pg'; $('#view').append(v); pg = pages[h] = { el: v, y: 0 };
-    if (a === 'u') profile(v, b, pg);
+    if (a === 'u') (c === 'followers' || c === 'following' ? people(v, b, c, pg) : profile(v, b, pg));
+    else if (a === 'notifications') notifications(v, pg);
     else if (a === 'p') thread(v, b, pg);
     else if (a === 'settings') settings(v);
     else if (a === 'admin') admin(v);
@@ -353,8 +407,8 @@ function route() {
 addEventListener('visibilitychange', () => !document.hidden && pages[cur]?.refresh?.());
 
 function chrome() {
-  const cur = location.hash || '#/', items = [['home', 'Home', '#/'], ['search', 'Search', '#/search'], ['mark', 'Bookmarks', '#/bookmarks'], ['user', 'Profile', me ? '#/u/' + me.username : ''], ...(me ? [['sliders', 'Settings', '#/settings']] : []), ...(me?.admin ? [['shield', 'Admin', '#/admin']] : [])];
-  const link = ([i, t, h], big) => `<a href="${h || '#/'}" ${h ? '' : 'data-need'} class="${big ? 'flex items-center gap-4 p-3 text-xl' : 'p-4'} rounded-full hover:bg-zinc-900 ${cur === h ? 'font-bold' : 'text-zinc-400'}">${ic(i, big ? '!h-7 !w-7' : '!h-6 !w-6')}${big ? `<span class="hidden xl:inline">${t}</span>` : ''}</a>`;
+  const cur = location.hash || '#/', items = [['home', 'Home', '#/'], ['search', 'Search', '#/search'], ...(me ? [['bell', 'Notifications', '#/notifications']] : []), ['mark', 'Bookmarks', '#/bookmarks'], ['user', 'Profile', me ? '#/u/' + me.username : ''], ...(me ? [['sliders', 'Settings', '#/settings']] : []), ...(me?.admin ? [['shield', 'Admin', '#/admin']] : [])];
+  const link = ([i, t, h], big) => `<a href="${h || '#/'}" ${h ? '' : 'data-need'} class="${big ? 'flex items-center gap-4 p-3 text-xl' : 'p-4'} rounded-full hover:bg-zinc-900 ${cur === h ? 'font-bold' : 'text-zinc-400'}"><span class="relative">${ic(i, big ? '!h-7 !w-7' : '!h-6 !w-6')}${h === '#/notifications' && unread ? `<i class="absolute -right-2 -top-2 grid min-w-[18px] place-items-center rounded-full bg-sky-500 px-1 text-[11px] font-bold not-italic leading-[18px] text-white">${unread > 99 ? '99+' : unread}</i>` : ''}</span>${big ? `<span class="hidden xl:inline">${t}</span>` : ''}</a>`;
   $('#nav').innerHTML = items.map((i) => link(i, 1)).join(''); $('#tabs').innerHTML = items.map((i) => link(i)).join('');
   $('#acct').innerHTML = me ? `<div class="flex items-center gap-3 rounded-full p-2 hover:bg-zinc-900">${av(me)}<div class="hidden min-w-0 flex-1 leading-tight xl:block"><div class="truncate font-bold">${esc(me.name)}</div><div class="truncate text-sm text-zinc-500">@${esc(me.username)}</div></div><button data-out class="hidden text-sm text-zinc-500 hover:text-white xl:block">Log out</button></div>` : '<button data-login class="rounded-full bg-sky-500 px-5 py-2 font-bold text-white">Log in</button>';
 }
@@ -393,6 +447,7 @@ async function submit(c) {
 }
 
 document.addEventListener('click', async (e) => {
+  const nl = e.target.closest('[data-nlink]'); if (nl && !e.target.closest('a,button')) return void (location.hash = nl.dataset.nlink);
   const b = e.target.closest('button,a'), art = e.target.closest('article'), d = b?.dataset || {};
   if (e.target === dlg) return dlg.close();
   if (e.target === gd) return gd.close();
@@ -408,9 +463,18 @@ document.addEventListener('click', async (e) => {
       if (p.reposted) document.querySelectorAll(`article[data-id="${id}"] [data-act="repost"]`).forEach((x) => x.classList.add('a-repost'));
       return api(`/posts/${id}/repost`, { method: 'POST' });
     }
-    if (d.m) { const id = b.closest('[data-pid]').dataset.pid; dlg.close(); if (d.m === 'copy') { navigator.clipboard?.writeText(location.href.split('#')[0] + '#/p/' + id); return toast('Link copied'); } if (d.m === 'report') return setTimeout(() => reportDlg('post', id), 250); return del(id); }
+    if (d.m) { const id = b.closest('[data-pid]').dataset.pid; dlg.close(); if (d.m === 'copy') { navigator.clipboard?.writeText(location.href.split('#')[0] + '#/p/' + id); return toast('Link copied'); } if (d.m === 'report') return setTimeout(() => reportDlg('post', id), 250);
+      if (d.m === 'pin') { const r = await api('/posts/' + id + '/pin', { method: 'POST' }); me.pinned = r.pinned ? id : null; localStorage.me = JSON.stringify(me); toast(r.pinned ? 'Pinned to your profile' : 'Unpinned'); const k = '#/u/' + me.username; drop(k); if (cur === k) { cur = null; route(); } return; }
+      if (d.m === 'muteu' || d.m === 'blocku') return relate(d.m === 'muteu' ? 'mute' : 'block', P[id].author.username);
+      return del(id); }
     if (d.rep) { await api('/report', { method: 'POST', body: JSON.stringify({ kind: d.k, target: d.t, reason: d.rep }) }); dlg.close(); return toast('Thanks, we’ll review your report'); }
-    if (d.repuser) return me ? reportDlg('user', d.repuser) : openAuth();
+    if (d.repuser) {
+      if (!me) return openAuth();
+      const un = d.un; return openDlg(`<div class="p-2">${[['mute', d.muted === '1' ? `Unmute @${un}` : `Mute @${un}`], ['block', d.blocked === '1' ? `Unblock @${un}` : `Block @${un}`], ['report', `Report @${un}`]].map(([m, t]) => `<button data-um="${m}" data-un="${un}" data-uid2="${d.repuser}" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900 ${m === 'report' ? '' : 'text-red-400'}">${t}</button>`).join('')}</div>`);
+    }
+    if (d.um) { dlg.close(); if (d.um === 'report') return setTimeout(() => reportDlg('user', d.uid2), 250); return relate(d.um, d.un); }
+    if (d.block) return relate('block', d.block);
+    if (d.ptab) { const v = b.closest('.pg'); v.querySelector('.ptabs').innerHTML = ptabs(v.dataset.uid, d.ptab); const f = v.querySelector('.f'); f.innerHTML = ''; return feed(f, `feed=${d.ptab}:${v.dataset.user}`, PE[d.ptab]); }
     if ('delacct' in d) { if (!confirm('Delete your account and all your posts forever?')) return; await api('/me', { method: 'DELETE' }); localStorage.clear(); location.hash = '#/'; return location.reload(); }
     if (d.ra) { const row = b.closest('[data-rid]'); await api('/admin/reports/' + row.dataset.rid, { method: 'POST', body: JSON.stringify({ action: d.ra }) }); collapse(row); return toast('Done'); }
     if ('ban' in d) { const row = b.closest('[data-uid]'), on = d.banned !== '1'; await api('/admin/users/' + row.dataset.uid, { method: 'POST', body: JSON.stringify({ banned: on }) }); b.dataset.banned = on ? '1' : '0'; b.textContent = on ? 'Unban' : 'Ban'; return toast(on ? 'User banned' : 'User unbanned'); }
@@ -431,7 +495,7 @@ document.addEventListener('click', async (e) => {
       const id = art.dataset.id, p = P[id];
       if (d.act === 'repost') return openDlg(`<div class="p-2" data-pid="${id}"><button data-rq="toggle" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900">${p.reposted ? 'Undo repost' : 'Repost'}</button><button data-rq="quote" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900">Quote</button></div>`);
       if (d.act === 'reply') { b.classList.add('a-reply'); return setTimeout(() => openDlg(`<div class="p-2">${composer(id)}</div>`), 200); }
-      if (d.act === 'more') return openDlg(`<div class="p-2" data-pid="${id}">${[['copy', 'Copy link'], ['report', 'Report post'], ...(me.id === p.author?.id || me.admin ? [['del', 'Delete post']] : [])].map(([m, t]) => `<button data-m="${m}" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900 ${m === 'del' ? 'text-red-500' : ''}">${t}</button>`).join('')}</div>`);
+      if (d.act === 'more') return openDlg(`<div class="p-2" data-pid="${id}">${[['copy', 'Copy link'], ...(me.id === p.author?.id && !p.reply && !p.repostBy ? [['pin', me.pinned === id ? 'Unpin from profile' : 'Pin to profile']] : []), ...(me.id !== p.author?.id ? [['muteu', `Mute @${p.author?.username}`], ['blocku', `Block @${p.author?.username}`]] : []), ['report', 'Report post'], ...(me.id === p.author?.id || me.admin ? [['del', 'Delete post']] : [])].map(([m, t]) => `<button data-m="${m}" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900 ${m === 'del' ? 'text-red-500' : ''}${m === 'muteu' || m === 'blocku' ? 'text-red-400' : ''}">${t}</button>`).join('')}</div>`);
       if (d.act === 'del') { if (!confirm('Delete this post?')) return; await api('/posts/' + id, { method: 'DELETE' }); art.style.cssText = 'opacity:0;transform:translateX(24px);transition:.25s'; return setTimeout(() => document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => a.remove()), 250); }
       const [k, n] = { like: ['liked', 'likes'], repost: ['reposted', 'reposts'], bookmark: ['bookmarked', 'saves'] }[d.act];
       p[k] = !p[k]; if (n) p[n] += p[k] ? 1 : -1; rerender(id); if (p[k]) document.querySelectorAll(`article[data-id="${id}"] [data-act="${d.act}"]`).forEach((x) => x.classList.add('a-' + d.act)); if (d.act === 'bookmark') drop('#/bookmarks');
@@ -478,6 +542,7 @@ let gtm; document.addEventListener('input', (e) => { if (e.target.id === 'gq') {
 document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.target.id === 'sq' || e.target.classList.contains('sq')) && e.target.value.trim()) location.hash = '#/search/' + encodeURIComponent(e.target.value.trim()); });
 addEventListener('hashchange', () => { chrome(); route(); });
 chrome(); route(); sugg(); trend();
+if (token) { pollUnread(); setInterval(pollUnread, 10000); }
 if (token) api('/me').then((d) => { me = d.user; localStorage.me = JSON.stringify(me); chrome(); }).catch(() => {});
 </script>
 </body>

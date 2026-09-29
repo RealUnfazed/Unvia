@@ -6,9 +6,11 @@ Created by **Alireza Asakareh (RealUnfazed)** · [MIT License](LICENSE)
 
 ## Features
 
-- **Timeline:** For you / Following feeds, infinite scroll, replies and threads, reposts, likes, bookmarks, @mentions and #hashtags
+- **Timeline:** For you / Following feeds, infinite scroll, replies and threads, reposts and quote posts, likes, bookmarks, @mentions and #hashtags
 - **Posting:** text (280 chars), image upload and a GIF picker (GIPHY)
-- **Profiles:** profile photo, banner, bio, followers/following, Follow / Unfollow
+- **Profiles:** photo, banner, bio, Posts / Replies / Media / Likes tabs, pinned post, followers and following lists, Follow / Unfollow
+- **Notifications:** likes, reposts, quotes, replies, mentions and follows, with a live unread badge
+- **Block & mute:** hide people from your feeds, search and notifications; blocking also removes follows both ways
 - **Badges:** Verified (blue), Business (gold), Government (grey) and Owner (gradient)
 - **Search & trends:** people, posts and hashtags, plus trending hashtags
 - **Safety:** report posts and accounts; admin review queue with dismiss, delete post and ban
@@ -63,7 +65,18 @@ capacitor.config.json  Mobile shell
 - PostFile's free tier has monthly upload limits; text-only posts don't use any.
 - Uploads are capped at 4 MB each (Vercel's request body limit is about 4.5 MB).
 - Tailwind loads from its CDN for simplicity; switch to the Tailwind CLI for production builds.
-- Not yet built: notifications, direct messages, polls, quote posts, lists, video.
+
+## Roadmap
+
+| Phase | Scope | Status |
+| --- | --- | --- |
+| 1. Social core | Notifications, profile tabs, followers/following lists, block & mute, pinned post | Done |
+| 2. Rich posting | Multi-image posts (up to 4), polls, edit post, emoji picker, @mention autocomplete, drafts and scheduled posts, reply controls, link previews | Next |
+| 3. Messaging | Direct messages (1:1 and group), read receipts, message requests | Planned |
+| 4. Accounts & safety | Password reset, email verification, protected accounts, 2FA, dim/light themes, muted words, profile extras (location, website, birthday) | Planned |
+| 5. Platform | Lists, Explore and topics, post analytics, Community Notes, communities, bookmark folders | Planned |
+| 6. Production | Rate limiting, Tailwind build (no CDN), moderation tools, push notifications for mobile | Planned |
+| Later / needs external services | Spaces (live audio needs WebRTC infrastructure), video posts (needs video hosting), Premium and payouts (needs a payment provider) | Backlog |
 
 ## Contributing & community
 

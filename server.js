@@ -12,7 +12,7 @@ const M = (n, s) => mongoose.models[n] || mongoose.model(n, new mongoose.Schema(
 const User = M('User', {
   username: { type: String, unique: true, lowercase: true, trim: true, match: /^[a-z0-9_]{3,15}$/ },
   name: String, bio: { type: String, default: '', maxlength: 160 }, hash: String,
-  following: [Id], bookmarks: [Id], avatar: String, banner: String, badge: { type: String, default: '' }, admin: Boolean, banned: Boolean,
+  following: [Id], bookmarks: [Id], blocked: [Id], muted: [Id], pinned: Id, avatar: String, banner: String, badge: { type: String, default: '' }, admin: Boolean, banned: Boolean,
   ghost: Boolean, fake: mongoose.Schema.Types.Mixed, // { target, mode: 'instant'|'gradual', startAt, endAt, startVal }
 });
 const Post = M('Post', {
@@ -23,7 +23,16 @@ const Post = M('Post', {
 });
 
 const Report = M('Report', { by: { type: Id, ref: 'User' }, post: { type: Id, ref: 'Post' }, user: { type: Id, ref: 'User' }, reason: String, status: { type: String, default: 'open' } });
+const Notif = M('Notif', { to: { type: Id, index: true }, from: { type: Id, ref: 'User' }, type: String, post: { type: Id, ref: 'Post' }, read: { type: Boolean, default: false } });
 const has = (a, id) => a.some((x) => String(x) === String(id));
+// Users whose content I shouldn't see: ones I blocked or muted, plus ones who blocked me.
+const hiddenFor = async (me) => (me ? [...new Set([...me.blocked, ...me.muted, ...(await User.distinct('_id', { blocked: me._id }))].map(String))] : []);
+// One notification per (recipient, sender, type, post); upsert makes repeat likes/follows idempotent.
+async function notify(to, from, type, post) {
+  if (!to || String(to) === String(from)) return;
+  await Notif.updateOne({ to, from, type, post: post || null }, { $setOnInsert: { read: false } }, { upsert: true });
+}
+const unnotify = (to, from, type, post) => Notif.deleteOne({ to, from, type, post: post || null });
 // Interpolates a fake count between startVal and target as `now` moves from startAt to endAt; no background job needed.
 function fakeVal(f) {
   if (!f || !f.target) return 0;
@@ -35,7 +44,7 @@ function fakeVal(f) {
 }
 // Posts scheduled to appear later (fake replies spread over time) are hidden from lists until their moment arrives.
 const visible = { $or: [{ visibleAt: null }, { visibleAt: { $exists: false } }, { visibleAt: { $lte: new Date() } }] };
-const pub = (u) => ({ id: u.id, username: u.username, name: u.name, bio: u.bio, avatar: u.avatar, banner: u.banner, badge: u.badge, admin: !!u.admin });
+const pub = (u) => ({ id: u.id, username: u.username, name: u.name, bio: u.bio, avatar: u.avatar, banner: u.banner, badge: u.badge, admin: !!u.admin, pinned: u.pinned ? String(u.pinned) : null });
 const pop = (q) => q.populate('author').populate({ path: 'repostOf', populate: { path: 'author' } }).populate({ path: 'quoteOf', populate: { path: 'author' } });
 const shape = (p, me) => {
   const o = p.repostOf?.author ? p.repostOf : p;
@@ -43,7 +52,7 @@ const shape = (p, me) => {
     id: o.id, text: o.text, media: o.media?.url, at: o.createdAt, author: o.author && pub(o.author),
     likes: o.likes.length + fakeVal(o.fake?.likes), liked: !!me && has(o.likes, me.id),
     reposts: o.reposts.length + (o.quotes || 0) + fakeVal(o.fake?.reposts), reposted: !!me && has(o.reposts, me.id),
-    replies: o.replies, bookmarked: !!me && has(me.bookmarks, o.id), saves: (o.saves || 0) + fakeVal(o.fake?.saves),
+    replies: o.replies, reply: !!o.parent, bookmarked: !!me && has(me.bookmarks, o.id), saves: (o.saves || 0) + fakeVal(o.fake?.saves),
     quoted: o.quoteOf ? { id: o.quoteOf.id, text: o.quoteOf.text, media: o.quoteOf.media?.url, at: o.quoteOf.createdAt, author: o.quoteOf.author && pub(o.quoteOf.author) } : (o.quoteDeleted ? { deleted: true } : null),
     repostBy: p === o ? null : pub(p.author), feedAt: p.createdAt,
   };
@@ -90,14 +99,26 @@ app.patch('/api/me', auth, upload.fields([{ name: 'avatar', maxCount: 1 }, { nam
   res.json({ user: pub(req.me) });
 });
 
-// feed = all | following | bookmarks | user:<username>; paginated by `before` (feedAt of last item)
+// feed = all | following | bookmarks | user:<name> | replies:<name> | media:<name> | likes:<name> (own only); paginated by `before`
 app.get('/api/posts', async (req, res) => {
-  const { feed = 'all', before } = req.query, me = req.me, f = { parent: null };
-  if (feed === 'following') { if (!me) return res.json([]); f.author = { $in: [...me.following, me.id] }; }
+  const { feed = 'all', before } = req.query, me = req.me, f = { parent: null }, hidden = await hiddenFor(me);
+  let pinnedUser;
+  if (feed === 'following') { if (!me) return res.json([]); f.author = { $in: [...me.following, me.id].filter((x) => !hidden.includes(String(x))) }; }
   else if (feed === 'bookmarks') { if (!me) return res.json([]); delete f.parent; f._id = { $in: me.bookmarks }; }
-  else if (feed.startsWith('user:')) { f.author = (await User.findOne({ username: feed.slice(5).toLowerCase() }))?._id; }
+  else if (/^(user|replies|media|likes):/.test(feed)) {
+    const [kind, name] = [feed.split(':')[0], feed.slice(feed.indexOf(':') + 1).toLowerCase()];
+    const u = await User.findOne({ username: name });
+    if (!u || (me && (u.blocked || []).some((x) => String(x) === me.id))) return res.json([]); // they blocked me
+    if (kind === 'likes') { if (me?.id !== u.id) return res.json([]); delete f.parent; f.likes = u._id; }
+    else { f.author = u._id; if (kind === 'replies') f.parent = { $ne: null }; if (kind === 'media') { f['media.url'] = { $exists: true, $ne: null }; f.repostOf = null; } if (kind === 'user') pinnedUser = u; }
+  } else if (hidden.length) f.author = { $nin: hidden };
   if (before) f.createdAt = { $lt: new Date(before) };
-  res.json((await pop(Post.find({ ...f, ...visible }).sort('-createdAt').limit(20))).map((p) => shape(p, me)));
+  let out = (await pop(Post.find({ ...f, ...visible }).sort('-createdAt').limit(20))).map((p) => shape(p, me));
+  if (pinnedUser?.pinned && !before) { // pinned post leads the first page of a profile
+    const pp = await pop(Post.findById(pinnedUser.pinned));
+    if (pp) out = [{ ...shape(pp, me), pinned: true }, ...out.filter((x) => x.id !== pp.id)];
+  }
+  res.json(out);
 });
 
 app.get('/api/posts/refresh', async (req, res) => {
@@ -109,7 +130,8 @@ app.get('/api/posts/refresh', async (req, res) => {
 app.get('/api/posts/:id', async (req, res) => {
   const p = await pop(Post.findById(req.params.id));
   if (!p) return res.sendStatus(404);
-  const [rs, par] = await Promise.all([pop(Post.find({ parent: p._id, ...visible }).sort('createdAt').limit(50)), p.parent ? pop(Post.findById(p.parent)) : null]);
+  const hidden = await hiddenFor(req.me);
+  const [rs, par] = await Promise.all([pop(Post.find({ parent: p._id, author: { $nin: hidden }, ...visible }).sort('createdAt').limit(50)), p.parent ? pop(Post.findById(p.parent)) : null]);
   res.json({ post: shape(p, req.me), parent: par && shape(par, req.me), replies: rs.map((r) => shape(r, req.me)) });
 });
 
@@ -132,13 +154,21 @@ app.post('/api/posts', auth, upload.single('image'), async (req, res) => {
   const p = await Post.create({ author: req.me._id, text, media, parent, quoteOf });
   if (quoteOf) await Post.updateOne({ _id: quoteOf }, { $inc: { quotes: 1 } });
   if (parent) await Post.updateOne({ _id: parent }, { $inc: { replies: 1 } });
+  const told = new Set([String(req.me._id)]);
+  const tell = async (to, type) => { if (to && !told.has(String(to))) { told.add(String(to)); await notify(to, req.me._id, type, p._id); } };
+  if (parent) await tell((await Post.findById(parent).select('author'))?.author, 'reply');
+  if (quoteOf) await tell((await Post.findById(quoteOf).select('author'))?.author, 'quote');
+  const names = [...new Set((text.match(/(?:^|\s)@(\w{3,15})/g) || []).map((x) => x.trim().slice(1).toLowerCase()))].slice(0, 10);
+  if (names.length) for (const u of await User.find({ username: { $in: names }, ghost: { $ne: true } }).select('_id')) await tell(u._id, 'mention');
   res.json(shape(await pop(Post.findById(p.id)), req.me));
 });
 
 app.post('/api/posts/:id/like', auth, async (req, res) => {
   const p = await Post.findById(req.params.id);
   if (!p) return res.sendStatus(404);
-  await Post.updateOne({ _id: p._id }, has(p.likes, req.me.id) ? { $pull: { likes: req.me._id } } : { $addToSet: { likes: req.me._id } });
+  const on = !has(p.likes, req.me.id);
+  await Post.updateOne({ _id: p._id }, on ? { $addToSet: { likes: req.me._id } } : { $pull: { likes: req.me._id } });
+  await (on ? notify(p.author, req.me._id, 'like', p._id) : unnotify(p.author, req.me._id, 'like', p._id));
   res.json({ ok: true });
 });
 app.post('/api/posts/:id/repost', auth, async (req, res) => {
@@ -147,9 +177,11 @@ app.post('/api/posts/:id/repost', auth, async (req, res) => {
   if (has(p.reposts, req.me.id)) {
     await Post.updateOne({ _id: p._id }, { $pull: { reposts: req.me._id } });
     await Post.deleteOne({ author: req.me._id, repostOf: p._id });
+    await unnotify(p.author, req.me._id, 'repost', p._id);
   } else {
     await Post.updateOne({ _id: p._id }, { $addToSet: { reposts: req.me._id } });
     await Post.create({ author: req.me._id, repostOf: p._id });
+    await notify(p.author, req.me._id, 'repost', p._id);
   }
   res.json({ ok: true });
 });
@@ -163,6 +195,8 @@ app.delete('/api/posts/:id', auth, async (req, res) => {
   const p = await Post.findOneAndDelete(req.me.admin ? { _id: req.params.id } : { _id: req.params.id, author: req.me._id });
   if (!p) return res.sendStatus(404);
   await Post.deleteMany({ repostOf: p._id });
+  await Notif.deleteMany({ post: p._id });
+  await User.updateOne({ _id: p.author, pinned: p._id }, { $unset: { pinned: 1 } });
   await Post.updateMany({ quoteOf: p._id }, { quoteDeleted: true });
   if (p.parent) await Post.updateOne({ _id: p.parent }, { $inc: { replies: -1 } });
   if (p.quoteOf) await Post.updateOne({ _id: p.quoteOf }, { $inc: { quotes: -1 } });
@@ -174,17 +208,56 @@ app.get('/api/users/:u', async (req, res) => {
   const u = await User.findOne({ username: req.params.u.toLowerCase() });
   if (!u) return res.sendStatus(404);
   const [followers, posts] = await Promise.all([User.countDocuments({ following: u._id }), Post.countDocuments({ author: u._id, parent: null, repostOf: null })]);
-  res.json({ ...pub(u), joined: u.createdAt, following: u.following.length, followers: followers + fakeVal(u.fake), posts, isFollowing: !!req.me && has(req.me.following, u.id) });
+  res.json({ ...pub(u), joined: u.createdAt, following: u.following.length, followers: followers + fakeVal(u.fake), posts, isFollowing: !!req.me && has(req.me.following, u.id),
+    blocked: !!req.me && has(req.me.blocked, u.id), muted: !!req.me && has(req.me.muted, u.id), blockedBy: !!req.me && has(u.blocked, req.me.id) });
 });
 app.post('/api/users/:u/follow', auth, async (req, res) => {
   const u = await User.findOne({ username: req.params.u.toLowerCase() });
   if (!u || u.id === req.me.id) return res.sendStatus(400);
+  if (has(req.me.blocked, u.id) || has(u.blocked, req.me.id)) return res.status(403).json({ error: 'You can’t follow this account' });
   const on = !has(req.me.following, u.id);
   await User.updateOne({ _id: req.me._id }, on ? { $addToSet: { following: u._id } } : { $pull: { following: u._id } });
+  await (on ? notify(u._id, req.me._id, 'follow') : unnotify(u._id, req.me._id, 'follow'));
   res.json({ isFollowing: on });
 });
+const userList = (filter) => async (req, res) => {
+  const u = await User.findOne({ username: req.params.u.toLowerCase() });
+  if (!u) return res.sendStatus(404);
+  const hidden = await hiddenFor(req.me);
+  const f0 = filter(u); // merge with any _id filter so "following" and "hidden" don't overwrite each other
+  const us = await User.find({ ...f0, _id: { ...(f0._id || {}), $nin: hidden }, ghost: { $ne: true } }).sort('-createdAt').limit(100);
+  res.json(us.map((x) => ({ ...pub(x), isFollowing: !!req.me && has(req.me.following, x.id) })));
+};
+app.get('/api/users/:u/followers', userList((u) => ({ following: u._id })));
+app.get('/api/users/:u/following', userList((u) => ({ _id: { $in: u.following } })));
+const toggleList = (field) => async (req, res) => {
+  const u = await User.findOne({ username: req.params.u.toLowerCase() });
+  if (!u || u.id === req.me.id) return res.sendStatus(400);
+  const on = !has(req.me[field], u.id);
+  await User.updateOne({ _id: req.me._id }, on ? { $addToSet: { [field]: u._id }, ...(field === 'blocked' && { $pull: { following: u._id } }) } : { $pull: { [field]: u._id } });
+  if (on && field === 'blocked') await User.updateOne({ _id: u._id }, { $pull: { following: req.me._id } });
+  res.json({ [field === 'blocked' ? 'blocked' : 'muted']: on });
+};
+app.post('/api/users/:u/block', auth, toggleList('blocked'));
+app.post('/api/users/:u/mute', auth, toggleList('muted'));
+app.post('/api/posts/:id/pin', auth, async (req, res) => {
+  const p = await Post.findOne({ _id: req.params.id, author: req.me._id, parent: null, repostOf: null });
+  if (!p) return res.sendStatus(404);
+  const on = String(req.me.pinned) !== p.id;
+  await User.updateOne({ _id: req.me._id }, on ? { pinned: p._id } : { $unset: { pinned: 1 } });
+  res.json({ pinned: on });
+});
+
+// ---- notifications ----
+const notifQuery = async (me) => ({ to: me._id, from: { $nin: await hiddenFor(me) } });
+app.get('/api/notifications', auth, async (req, res) => {
+  const ns = await Notif.find(await notifQuery(req.me)).sort('-createdAt').limit(60).populate('from').populate('post');
+  res.json(ns.filter((n) => n.from).map((n) => ({ id: n.id, type: n.type, read: n.read, at: n.createdAt, from: pub(n.from), post: n.post ? { id: n.post.id, text: n.post.text, media: !!n.post.media?.url } : null })));
+});
+app.get('/api/notifications/count', auth, async (req, res) => res.json({ unread: await Notif.countDocuments({ ...(await notifQuery(req.me)), read: false }) }));
+app.post('/api/notifications/read', auth, async (req, res) => { await Notif.updateMany({ to: req.me._id, read: false }, { read: true }); res.json({ ok: true }); });
 app.get('/api/suggest', async (req, res) => {
-  const ex = req.me ? [...req.me.following, req.me._id] : [];
+  const ex = req.me ? [...req.me.following, req.me._id, ...(await hiddenFor(req.me))] : [];
   res.json((await User.find({ _id: { $nin: ex }, ghost: { $ne: true } }).sort('-createdAt').limit(4)).map(pub));
 });
 
@@ -198,7 +271,8 @@ app.get('/api/search', async (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 50);
   if (!q) return res.json({ users: [], posts: [] });
   const r = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-  const [us, ps] = await Promise.all([User.find({ $or: [{ username: r }, { name: r }], ghost: { $ne: true } }).limit(5), pop(Post.find({ text: r, repostOf: null, ...visible }).sort('-createdAt').limit(20))]);
+  const hidden = await hiddenFor(req.me);
+  const [us, ps] = await Promise.all([User.find({ $or: [{ username: r }, { name: r }], _id: { $nin: hidden }, ghost: { $ne: true } }).limit(5), pop(Post.find({ text: r, repostOf: null, author: { $nin: hidden }, ...visible }).sort('-createdAt').limit(20))]);
   res.json({ users: us.map((u) => ({ ...pub(u), isFollowing: !!req.me && has(req.me.following, u.id) })), posts: ps.map((p) => shape(p, req.me)) });
 });
 
