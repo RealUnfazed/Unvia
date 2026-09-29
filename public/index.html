@@ -24,9 +24,11 @@ aside{scrollbar-width:none}
 @keyframes drip{0%{transform:translateY(0)}30%{transform:translateY(-8px) scaleY(1.2)}60%{transform:translateY(2px) scaleY(.8)}100%{transform:translateY(0)}}
 @keyframes nudge{0%,100%{transform:none}30%{transform:translateX(6px) rotate(-14deg)}60%{transform:translateX(-3px) rotate(9deg)}}
 @keyframes flash{0%{background:rgba(56,189,248,.14)}100%{background:transparent}}
+@keyframes ticksp{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 .a-like svg{animation:heart .55s cubic-bezier(.2,.8,.2,1.4)}
 .a-repost svg{animation:spin .6s cubic-bezier(.3,1.4,.5,1)}.a-bookmark svg{animation:drip .5s ease}.a-reply svg{animation:nudge .5s ease}
 .flash{animation:flash .8s ease}
+.tick{display:inline-block;font-variant-numeric:tabular-nums}.tick-spin{animation:ticksp .09s linear infinite;color:#38bdf8}
 </style>
 </head>
 <body class="min-h-screen bg-black text-zinc-100 antialiased" style="padding-top:env(safe-area-inset-top)">
@@ -62,18 +64,26 @@ const nf = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFraction
 const fmt = (n) => nf.format(n || 0); // 1234 -> 1.2K, 106345 -> 106K, 1787778 -> 1.8M — matches X's count style
 let token = localStorage.token, me = JSON.parse(localStorage.me || 'null'), tab = 'all', reg = false, cur, poll;
 const pages = {};
-// Animates a displayed count from its last value to `n`, so climbing followers/likes are visibly moving, not frozen numbers.
-function setCount(el, n) {
+const DIGITS = '0123456789';
+// Rolls an element's digits to a new value like a padlock's wheels tumbling into place — left digits settle first.
+function rollTo(el, text) {
   if (!el) return;
-  const from = +el.dataset.raw || 0, to = +n || 0; el.dataset.raw = to;
-  if (from === to) return void (el.textContent = fmt(to));
-  const t0 = performance.now(), dur = 600;
-  (function step(t) {
-    const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3);
-    el.textContent = fmt(Math.round(from + (to - from) * e));
-    if (p < 1) requestAnimationFrame(step);
-  })(t0);
+  const cur = el.children.length ? [...el.children].map((s) => s.textContent).join('') : el.textContent;
+  if (cur === text) return void (el.children.length || (el.textContent = text));
+  const chars = [...text];
+  el.innerHTML = chars.map((c) => `<span class="tick">${c}</span>`).join('');
+  const spans = [...el.children]; let step = 0;
+  clearInterval(el._roll);
+  el._roll = setInterval(() => {
+    step++; let settled = true;
+    spans.forEach((s, i) => {
+      if (step >= i * 2 + 3) { s.textContent = chars[i]; s.classList.remove('tick-spin'); }
+      else { settled = false; s.classList.add('tick-spin'); s.textContent = /[0-9]/.test(chars[i]) ? DIGITS[(Math.random() * 10) | 0] : chars[i]; }
+    });
+    if (settled) clearInterval(el._roll);
+  }, 60);
 }
+const roll = (el, n) => rollTo(el, fmt(n));
 
 const I = { reply: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z', repost: 'M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3', heart: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z', mark: 'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z', home: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10', user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', back: 'M19 12H5M12 19l-7-7 7-7', more: 'M5 12h.01M12 12h.01M19 12h.01', sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6', shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3', trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6' };
 const ic = (n, c = '', fill = false) => `<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] ${c}" fill="${fill ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${I[n]}"/></svg>`;
@@ -88,7 +98,7 @@ async function api(path, o = {}) {
 
 const av = (u, c = 'h-10 w-10') => `<a href="#/u/${esc(u?.username)}" class="${c} grid shrink-0 place-items-center rounded-full font-bold text-white" style="background:hsl(${hue(u?.username)} 55% 42%)">${u?.avatar ? `<img src="${esc(u.avatar)}" class="h-full w-full rounded-full object-cover">` : esc((u?.name || '?')[0].toUpperCase())}</a>`;
 const fbtn = (u, on) => `<button data-follow="${esc(u)}" class="rounded-full px-4 py-1.5 text-sm font-bold ${on ? 'border border-zinc-600 text-white hover:border-red-500 hover:text-red-500' : 'bg-white text-black hover:bg-zinc-200'}">${on ? 'Following' : 'Follow'}</button>`;
-const btn = (act, n, h, on = '', fill = false) => `<button data-act="${act}" class="flex items-center gap-1.5 rounded-full p-2 relative ${h} ${h.replace('text-', 'bg-')}/10 ${on || ''}">${ic({ like: 'heart', bookmark: 'mark', del: 'trash' }[act] || act, '', fill)}${n ? `<span>${fmt(n)}</span>` : ''}</button>`;
+const btn = (act, n, h, on = '', fill = false) => `<button data-act="${act}" class="flex items-center gap-1.5 rounded-full p-2 relative ${h} ${h.replace('text-', 'bg-')}/10 ${on || ''}">${ic({ like: 'heart', bookmark: 'mark', del: 'trash' }[act] || act, '', fill)}${n ? `<span class="cnt">${fmt(n)}</span>` : ''}</button>`;
 const guest = () => '<div class="p-10 text-center"><p class="mb-4 text-zinc-400">Log in to see this.</p><button data-login class="rounded-full bg-sky-500 px-6 py-2 font-bold text-white">Log in</button></div>';
 const head = (t, sub = '', back = true) => `<div class="sticky top-0 z-10 flex items-center gap-6 bg-black/80 px-4 py-2 backdrop-blur">${back ? `<button data-back class="rounded-full p-2 hover:bg-zinc-900">${ic('back')}</button>` : ''}<div><h1 class="text-xl font-bold leading-tight">${t}</h1>${sub ? `<div class="text-xs text-zinc-500">${sub}</div>` : ''}</div></div>`;
 
@@ -121,11 +131,27 @@ const openAuth = () => openDlg(`<form id="af" class="space-y-3 p-6"><h2 class="t
 const skel = '<div class="skl m-4 h-24 rounded-2xl bg-zinc-900"></div>'.repeat(3);
 const drop = (k) => { pages[k]?.el.remove(); delete pages[k]; };
 const rerender = (id) => { document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => (a.outerHTML = card(P[id]))); document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => a.classList.add('flash')); };
+// Passive updates (other people's activity, gradual fake boosts) roll the numbers in place instead of replacing the whole card.
+function syncCounts(p) {
+  document.querySelectorAll(`article[data-id="${p.id}"]`).forEach((art) => {
+    [['reply', p.replies], ['repost', p.reposts], ['like', p.likes], ['bookmark', p.saves]].forEach(([act, n]) => {
+      const b = art.querySelector(`[data-act="${act}"]`); if (!b) return;
+      let cnt = b.querySelector('.cnt');
+      if (n) { if (!cnt) { b.insertAdjacentHTML('beforeend', '<span class="cnt"></span>'); cnt = b.querySelector('.cnt'); } rollTo(cnt, fmt(n)); }
+      else cnt?.remove();
+    });
+    [['like', 'liked', 'text-pink-600', true], ['repost', 'reposted', 'text-emerald-500', false], ['bookmark', 'bookmarked', 'text-sky-500', true]].forEach(([act, key, cls, fill]) => {
+      const b = art.querySelector(`[data-act="${act}"]`); if (!b) return;
+      b.classList.toggle(cls, !!p[key]);
+      if (fill) b.querySelector('svg')?.setAttribute('fill', p[key] ? 'currentColor' : 'none');
+    });
+  });
+}
 // Silently refetches just the posts currently on screen in a feed/search/bookmarks list and updates their counts in place — no reorder, no scroll jump.
 async function refreshVisible(el) {
   const ids = [...(el?.querySelectorAll('article[data-id]') || [])].map((a) => a.dataset.id);
   if (!ids.length) return;
-  try { (await api('/posts/refresh?ids=' + ids.join(','))).forEach((p) => { P[p.id] = p; rerender(p.id); }); } catch {}
+  try { (await api('/posts/refresh?ids=' + ids.join(','))).forEach((p) => { P[p.id] = p; syncCounts(p); }); } catch {}
 }
 const ins = (ref, pos, html) => { ref.insertAdjacentHTML(pos, html); (pos === 'afterbegin' ? ref.firstElementChild : ref.nextElementSibling).classList.add('drop'); };
 function toast(m, err) {
@@ -264,9 +290,9 @@ async function profile(v, name, pg) {
   pg.refresh = async () => {
     try {
       const nu = await api('/users/' + name);
-      setCount(v.querySelector('[data-stat=posts]'), nu.posts);
-      setCount(v.querySelector('[data-stat=following]'), nu.following);
-      setCount(v.querySelector('[data-stat=followers]'), nu.followers);
+      roll(v.querySelector('[data-stat=posts]'), nu.posts);
+      roll(v.querySelector('[data-stat=following]'), nu.following);
+      roll(v.querySelector('[data-stat=followers]'), nu.followers);
       const fb = v.querySelector('[data-follow]');
       if (fb && me?.id !== nu.id) v.querySelector('[data-followbox]').innerHTML = `<div class="flex gap-2"><button data-repuser="${nu.id}" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('more')}</button>${fbtn(nu.username, nu.isFollowing)}</div>`;
     } catch {}
@@ -282,8 +308,8 @@ async function thread(v, id, pg) {
     pg.refresh = async () => {
       try {
         const nd = await api('/posts/' + id);
-        if (nd.parent) { P[nd.parent.id] = nd.parent; rerender(nd.parent.id); }
-        P[nd.post.id] = nd.post; rerender(nd.post.id);
+        if (nd.parent) { P[nd.parent.id] = nd.parent; syncCounts(nd.parent); }
+        P[nd.post.id] = nd.post; syncCounts(nd.post);
         if (nd.replies.length > d.replies.length) {
           v.querySelector('.nr')?.remove();
           nd.replies.slice(d.replies.length).forEach((r) => { P[r.id] = r; v.insertAdjacentHTML('beforeend', card(r)); v.lastElementChild.classList.add('drop'); });
