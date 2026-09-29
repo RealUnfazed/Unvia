@@ -59,8 +59,20 @@ const esc = (s) => (s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 const linkify = (t) => esc(t).replace(/(^|\s)@(\w+)/g, '$1<a href="#/u/$2" class="text-sky-500 hover:underline">@$2</a>').replace(/(^|\s)#(\w+)/g, '$1<a href="#/search/%23$2" class="text-sky-500 hover:underline">#$2</a>');
 const ago = (t) => { const s = (Date.now() - new Date(t)) / 1000; return s < 60 ? 'now' : s < 3600 ? (s / 60 | 0) + 'm' : s < 86400 ? (s / 3600 | 0) + 'h' : new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); };
 const hue = (s) => Math.abs([...(s || '')].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)) % 360;
-const nf = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
-const fmt = (n) => nf.format(n || 0); // 1234 -> 1.2K, 106345 -> 106K, 1787778 -> 1.8M — matches X's count style
+// Caps at 3 significant digits like X does: "37.1K" (2-digit + decimal) but "371K" (3-digit, no decimal) — a decimal only shows below 100 in its tier.
+function fmt(n) {
+  n = Math.round(+n || 0);
+  const neg = n < 0 ? '-' : '', abs = Math.abs(n), tiers = [[1e9, 'B'], [1e6, 'M'], [1e3, 'K']];
+  for (let i = 0; i < tiers.length; i++) {
+    const [v, s] = tiers[i]; if (abs < v) continue;
+    const scaled = abs / v, digits = scaled >= 100 ? 0 : 1;
+    let val = +scaled.toFixed(digits);
+    if (val >= 1000 && i > 0) { const [v2, s2] = tiers[i - 1]; return neg + (+(abs / v2).toFixed(1)) + s2; } // rounded into the next tier, e.g. 999.6K -> 1M
+    if (val >= 100 && digits === 1) val = Math.round(val); // rounding pushed a 2-digit decimal over 100, e.g. 99.96 -> 100
+    return neg + val + s;
+  }
+  return neg + abs.toLocaleString('en-US');
+}
 let token = localStorage.token, me = JSON.parse(localStorage.me || 'null'), tab = 'all', reg = false, cur, poll;
 const pages = {};
 // Smoothly counts from the last displayed value to `n`, formatting at every frame — always a real number mid-flight, never a mismatched unit like a stray "K" flashing before an "M".
