@@ -28,6 +28,7 @@ aside{scrollbar-width:none}
 .a-repost svg{animation:spin .6s cubic-bezier(.3,1.4,.5,1)}.a-bookmark svg{animation:drip .5s ease}.a-reply svg{animation:nudge .5s ease}
 .flash{animation:flash .8s ease}
 .cnt{display:inline-block;font-variant-numeric:tabular-nums}
+@keyframes grow{from{width:0}}.bar{animation:grow .8s cubic-bezier(.2,.8,.2,1)}
 </style>
 </head>
 <body class="min-h-screen bg-black text-zinc-100 antialiased" style="padding-top:env(safe-area-inset-top)">
@@ -56,7 +57,11 @@ const API = window.Capacitor?.isNativePlatform?.() ? 'https://YOUR-APP.vercel.ap
 const $ = (s) => document.querySelector(s), P = {}, dlg = $('#dlg'), gd = $('#gd');
 let gt;
 const esc = (s) => (s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const linkify = (t) => esc(t).replace(/(^|\s)@(\w+)/g, '$1<a href="#/u/$2" class="text-sky-500 hover:underline">@$2</a>').replace(/(^|\s)#(\w+)/g, '$1<a href="#/search/%23$2" class="text-sky-500 hover:underline">#$2</a>');
+const urlify = (s) => s.replace(/https?:\/\/[^\s<]+/g, (u) => {
+  const tail = (u.match(/(?:[.,!?;:)\]]|&quot;|&#39;)+$/) || [''])[0], url = tail ? u.slice(0, -tail.length) : u, txt = url.replace(/^https?:\/\//, '');
+  return `<a href="${url}" target="_blank" rel="noopener noreferrer nofollow" class="text-sky-500 hover:underline">${txt.length > 36 ? txt.slice(0, 36) + '…' : txt}</a>${tail}`;
+});
+const linkify = (t) => urlify(esc(t)).replace(/(^|\s)@(\w+)/g, '$1<a href="#/u/$2" class="text-sky-500 hover:underline">@$2</a>').replace(/(^|\s)#(\w+)/g, '$1<a href="#/search/%23$2" class="text-sky-500 hover:underline">#$2</a>');
 const ago = (t) => { const s = (Date.now() - new Date(t)) / 1000; return s < 60 ? 'now' : s < 3600 ? (s / 60 | 0) + 'm' : s < 86400 ? (s / 3600 | 0) + 'h' : new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); };
 const hue = (s) => Math.abs([...(s || '')].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)) % 360;
 // Caps at 3 significant digits like X does: "37.1K" (2-digit + decimal) but "371K" (3-digit, no decimal) — a decimal only shows below 100 in its tier.
@@ -108,6 +113,66 @@ const btn = (act, n, h, on = '', fill = false) => `<button data-act="${act}" cla
 const guest = () => '<div class="p-10 text-center"><p class="mb-4 text-zinc-400">Log in to see this.</p><button data-login class="rounded-full bg-sky-500 px-6 py-2 font-bold text-white">Log in</button></div>';
 const head = (t, sub = '', back = true) => `<div class="sticky top-0 z-10 flex items-center gap-6 bg-black/80 px-4 py-2 backdrop-blur">${back ? `<button data-back class="rounded-full p-2 hover:bg-zinc-900">${ic('back')}</button>` : ''}<div><h1 class="text-xl font-bold leading-tight">${t}</h1>${sub ? `<div class="text-xs text-zinc-500">${sub}</div>` : ''}</div></div>`;
 
+const left = (t) => { const ms = new Date(t) - Date.now(); if (ms <= 0) return 'Final results'; const m = Math.ceil(ms / 60000); return m < 60 ? `${m}m left` : m < 1440 ? `${Math.ceil(m / 60)}h left` : `${Math.ceil(m / 1440)}d left`; };
+const pollInner = (p) => {
+  const q = p.poll, show = q.voted >= 0 || q.ended || (me && p.author?.id === me.id);
+  return q.options.map((o, i) => {
+    const pct = q.total ? Math.round(o.votes / q.total * 100) : 0, mine = q.voted === i;
+    return show ? `<div class="relative mt-2 flex h-9 items-center justify-between overflow-hidden rounded-lg bg-zinc-900 px-3 text-sm"><i class="bar absolute inset-y-0 left-0 rounded-lg ${mine ? 'bg-sky-500/50' : 'bg-zinc-700/70'}" style="width:${pct}%"></i><span class="relative truncate ${mine ? 'font-bold' : ''}">${esc(o.text)}${mine ? ' ✓' : ''}</span><span class="relative ml-2 shrink-0">${pct}%</span></div>`
+      : `<button type="button" data-vote="${i}" class="mt-2 block h-9 w-full rounded-full border border-sky-500 px-3 text-sm font-bold text-sky-400 transition-colors hover:bg-sky-500/10">${esc(o.text)}</button>`;
+  }).join('') + `<div class="mt-2 text-xs text-zinc-500">${fmt(q.total)} vote${q.total === 1 ? '' : 's'} · ${left(q.endsAt)}</div>`;
+};
+const pollBlock = (p) => (p.poll ? `<div data-pollbox class="mt-3">${pollInner(p)}</div>` : '');
+const gallery = (p) => {
+  const im = p.images?.length ? p.images : p.media ? [p.media] : [], n = im.length; if (!n) return '';
+  return `<div class="mt-3 grid gap-0.5 overflow-hidden rounded-2xl border border-zinc-800 ${n > 1 ? 'h-72 grid-cols-2' : ''} ${n > 2 ? 'grid-rows-2' : ''}">${im.map((u, i) => `<button type="button" data-img="${esc(u)}" class="block overflow-hidden ${n === 3 && i === 0 ? 'row-span-2' : ''}"><img src="${esc(u)}" loading="lazy" class="w-full object-cover ${n > 1 ? 'h-full' : 'max-h-[510px]'}"></button>`).join('')}</div>`;
+};
+const previewCard = (pv) => (pv ? `<a href="${esc(pv.url)}" target="_blank" rel="noopener noreferrer nofollow" class="mt-3 block overflow-hidden rounded-2xl border border-zinc-800 transition-colors hover:bg-white/[.04]">${pv.image ? `<img src="${esc(pv.image)}" loading="lazy" class="max-h-64 w-full object-cover" onerror="this.remove()">` : ''}<div class="p-3"><div class="truncate text-xs text-zinc-500">${esc(pv.site)}</div><div class="line-clamp-2 font-semibold">${esc(pv.title)}</div>${pv.description ? `<div class="line-clamp-2 text-sm text-zinc-500">${esc(pv.description)}</div>` : ''}</div></a>` : '');
+const replyMsg = (p) => (p.replyLimit === 'following' ? `Only accounts @${p.author?.username} follows can reply` : 'Only people mentioned in this post can reply');
+const dot = (u, c = 'h-7 w-7 text-xs') => `<span class="${c} grid shrink-0 place-items-center overflow-hidden rounded-full font-bold text-white" style="background:hsl(${hue(u?.username)} 55% 42%)">${u?.avatar ? `<img src="${esc(u.avatar)}" class="h-full w-full object-cover">` : esc((u?.name || '?')[0].toUpperCase())}</span>`;
+const RL = { '': '🌐 Everyone can reply', following: '👥 Accounts you follow can reply', mentioned: '@ Only mentioned accounts can reply' };
+const EMO = {
+  Smileys: '😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 😉 😍 🥰 😘 😋 😛 😜 🤪 😎 🤩 🥳 😏 😒 😞 😔 😟 😕 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😓 🤗 🤔 🤭 🤫 😶 😐 😑 😬 🙄 😯 😮 😲 🥱 😴 🤤 😵 🤐 🥴 🤢 🤮 🤧 😷 🤒'.split(' '),
+  Gestures: '👍 👎 👌 ✌️ 🤞 🤟 🤘 🤙 👈 👉 👆 👇 ☝️ ✋ 🤚 🖖 👋 🤝 👏 🙌 👐 🙏 💪 🫶 👀 🧠'.split(' '),
+  'Hearts & symbols': '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 💕 💞 💓 💗 💖 💘 💝 ✨ ⭐ 🌟 💫 🔥 💯 ✅ ❌ ⚡ 💥 🎉 🎊'.split(' '),
+  'Nature & food': '🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🐔 🐧 🐦 🦄 🐝 🦋 🌸 🌹 🌻 🌈 ☀️ 🌙 ⛅ ❄️ 🍎 🍕 🍔 🍟 🌮 🍣 🍩 🍪 🎂 🍫 ☕ 🍺 🍷'.split(' '),
+  Objects: '⚽ 🏀 🏈 🎮 🎧 🎵 🎬 📷 💻 📱 💡 📚 ✈️ 🚗 🚀 🏠 🎁 💰 🔑 ⏰ 🌍'.split(' '),
+};
+const emoHTML = () => Object.entries(EMO).map(([k, l]) => `<div class="px-1 pt-1 text-xs font-bold text-zinc-500">${k}</div><div class="flex flex-wrap">${l.map((e) => `<button type="button" data-e="${e}" class="h-9 w-9 rounded-lg text-xl hover:bg-zinc-800">${e}</button>`).join('')}</div>`).join('');
+function renderPv(c) {
+  const pv = c.querySelector('.pv'), files = c._files || [], gif = c.dataset.gif;
+  const items = gif ? [{ src: gif, k: 'gif' }] : files.map((f, i) => ({ src: f.url, k: i }));
+  pv.className = `pv mb-2 grid gap-2 ${items.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}${items.length ? '' : ' hidden'}`;
+  pv.innerHTML = items.map((it) => `<div class="drop relative"><img src="${esc(it.src)}" class="w-full rounded-2xl object-cover ${items.length > 1 ? 'h-40' : 'max-h-72'}"><button type="button" data-rmimg="${it.k}" aria-label="Remove" class="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-black/70 text-white hover:bg-black">✕</button></div>`).join('');
+}
+function togglePoll(c, on = !c.dataset.pollon) {
+  const pl = c.querySelector('.pl'); if (!pl) return;
+  c.dataset.pollon = on ? '1' : ''; pl.classList.toggle('hidden', !on);
+  if (on) { (c._files || []).forEach((f) => URL.revokeObjectURL(f.url)); c._files = []; delete c.dataset.gif; renderPv(c); }
+  else { pl.querySelectorAll('[data-po]').forEach((i, n) => { i.value = ''; if (n > 1) i.classList.add('hidden'); }); pl.querySelector('[data-poadd]').classList.remove('hidden'); }
+}
+function resetComposer(c) {
+  c.querySelector('textarea').value = ''; c.querySelector('.ct').textContent = 280;
+  (c._files || []).forEach((f) => URL.revokeObjectURL(f.url)); c._files = []; delete c.dataset.gif; renderPv(c); togglePoll(c, false);
+  const s = c.querySelector('.sch'); if (s) { s.classList.add('hidden'); s.querySelector('input').value = ''; }
+  c.querySelector('.emo').classList.add('hidden'); c.querySelector('.sub').textContent = c.dataset.parent ? 'Reply' : 'Post';
+  c.dataset.rl = ''; const rb = c.querySelector('[data-rlbtn]'); if (rb) rb.textContent = RL[''];
+}
+// Shrinks big photos in the browser so 4 of them fit under the host's request-size limit.
+async function compress(f) {
+  if (f.type === 'image/gif' || f.size < 700 * 1024) return f;
+  try {
+    const bm = await createImageBitmap(f), k = Math.min(1, 1600 / Math.max(bm.width, bm.height)), cv = document.createElement('canvas');
+    cv.width = Math.round(bm.width * k); cv.height = Math.round(bm.height * k);
+    const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(bm, 0, 0, cv.width, cv.height);
+    const blob = await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.85));
+    return blob && blob.size < f.size ? new File([blob], f.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : f;
+  } catch { return f; }
+}
+function pickMention(c, un) {
+  const ta = c.querySelector('textarea'), pos = ta.selectionStart, before = ta.value.slice(0, pos).replace(/@(\w{1,15})$/, '@' + un + ' ');
+  ta.value = before + ta.value.slice(pos); ta.selectionStart = ta.selectionEnd = before.length; c.querySelector('.mn').classList.add('hidden'); ta.focus(); ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
 const quoteEmbed = (q) => q.deleted
   ? '<div class="mt-3 rounded-2xl border border-zinc-800 p-3 text-sm text-zinc-500">This post was deleted.</div>'
   : `<button type="button" data-qlink="${q.id}" class="mt-3 block w-full rounded-2xl border border-zinc-800 p-3 text-left transition-colors hover:bg-white/[.04]"><div class="flex items-center gap-1 text-sm"><b class="truncate">${esc(q.author?.name)}</b>${bdg(q.author)}<span class="truncate text-zinc-500">@${esc(q.author?.username)} · ${ago(q.at)}</span></div>${q.text ? `<p class="mt-1 line-clamp-4 whitespace-pre-wrap break-words text-[15px]">${esc(q.text)}</p>` : ''}${q.media ? `<img src="${esc(q.media)}" loading="lazy" class="mt-2 max-h-64 w-full rounded-xl object-cover">` : ''}</button>`;
@@ -115,22 +180,34 @@ const card = (p) => { P[p.id] = p; const a = p.author || {}; return `<article da
   ${p.pinned ? `<div class="mb-1 ml-12 flex items-center gap-2 text-xs font-bold text-zinc-500">${ic('pin', '!h-3.5 !w-3.5')}Pinned</div>` : ''}
   ${p.repostBy ? `<div class="mb-1 ml-12 flex items-center gap-2 text-xs font-bold text-zinc-500">${ic('repost', '!h-3.5 !w-3.5')}${esc(p.repostBy.name)} reposted</div>` : ''}
   <div class="flex gap-3">${av(a)}<div class="min-w-0 flex-1">
-    <div class="flex gap-1 text-[15px]"><a href="#/u/${esc(a.username)}" class="truncate font-bold hover:underline">${esc(a.name)}${bdg(a)}</a><span class="truncate text-zinc-500">@${esc(a.username)} · ${ago(p.at)}</span></div>
+    <div class="flex gap-1 text-[15px]"><a href="#/u/${esc(a.username)}" class="truncate font-bold hover:underline">${esc(a.name)}${bdg(a)}</a><span class="truncate text-zinc-500">@${esc(a.username)} · ${ago(p.at)}${p.edited ? ' · Edited' : ''}</span></div>
     <p class="whitespace-pre-wrap break-words text-[15px]">${linkify(p.text)}</p>
-    ${p.media ? `<img src="${esc(p.media)}" loading="lazy" class="mt-3 max-h-[510px] w-full rounded-2xl border border-zinc-800 object-cover">` : ''}
+    ${gallery(p)}${pollBlock(p)}${previewCard(p.preview)}
     ${p.quoted ? quoteEmbed(p.quoted) : ''}
     <div class="-ml-2 mt-1 flex max-w-md justify-between text-sm text-zinc-500">
-      ${btn('reply', p.replies, 'hover:text-sky-500')}${btn('repost', p.reposts, 'hover:text-emerald-500', p.reposted && 'text-emerald-500')}
+      ${btn('reply', p.replies, 'hover:text-sky-500', p.canReply === false && 'opacity-40')}${btn('repost', p.reposts, 'hover:text-emerald-500', p.reposted && 'text-emerald-500')}
       ${btn('like', p.likes, 'hover:text-pink-600', p.liked && 'text-pink-600', p.liked)}${btn('bookmark', p.saves || '', 'hover:text-sky-500', p.bookmarked && 'text-sky-500', p.bookmarked)}
       ${btn('more', '', 'hover:text-sky-500')}
     </div></div></div></article>`; };
 
-const composer = (parent = '', quote = '') => `<div class="cmp flex gap-3 p-4" data-parent="${parent}" data-quote="${quote}">${av(me)}<div class="min-w-0 flex-1">
-  <textarea maxlength="280" rows="2" placeholder="${parent ? 'Post your reply' : quote ? 'Add a comment' : "What's happening?"}" class="w-full resize-none bg-transparent text-xl outline-none placeholder:text-zinc-500"></textarea>
-  <img class="pv mb-2 hidden max-h-64 rounded-2xl">
+const composer = (parent = '', quote = '', text = '', draft = '') => `<div class="cmp flex gap-3 p-4" data-parent="${parent}" data-quote="${quote}" data-draft="${draft}" data-rl="">${av(me)}<div class="relative min-w-0 flex-1">
+  <textarea maxlength="280" rows="2" placeholder="${parent ? 'Post your reply' : quote ? 'Add a comment' : "What's happening?"}" class="w-full resize-none bg-transparent text-xl outline-none placeholder:text-zinc-500">${esc(text)}</textarea>
+  <div class="mn absolute left-0 z-30 hidden w-64 overflow-hidden rounded-xl border border-zinc-800 bg-black shadow-xl"></div>
+  <div class="pv mb-2 hidden"></div>
+  ${parent ? '' : `<div class="pl mb-2 hidden space-y-2 rounded-2xl border border-zinc-800 p-3">${[1, 2, 3, 4].map((n) => `<input data-po maxlength="25" placeholder="Choice ${n}${n > 2 ? ' (optional)' : ''}" class="${inp} ${n > 2 ? 'hidden' : ''}">`).join('')}<div class="flex flex-wrap items-center justify-between gap-2 text-sm"><button type="button" data-poadd class="font-semibold text-sky-500 hover:text-sky-400">+ Add a choice</button><select data-pomin class="rounded bg-zinc-900 px-2 py-1 outline-none"><option value="60">1 hour</option><option value="1440" selected>1 day</option><option value="4320">3 days</option><option value="10080">7 days</option></select><button type="button" data-porm class="text-red-400 hover:text-red-300">Remove poll</button></div></div>`}
   ${quote && P[quote] ? quoteEmbed({ ...P[quote], id: '' }).replace('type="button" data-qlink=""', 'type="button" tabindex="-1"') : ''}
-  <div class="flex items-center justify-between border-t border-zinc-800 pt-3"><label class="cursor-pointer text-sm font-semibold text-sky-500 hover:text-sky-400">Add image<input type="file" accept="image/*" class="hidden"></label><button type="button" data-gifopen class="ml-4 rounded border border-sky-500 px-1.5 text-xs font-bold text-sky-500 hover:bg-sky-500/10">GIF</button>
-  <div class="flex items-center gap-3"><span class="ct text-sm text-zinc-500">280</span><button class="sub rounded-full bg-sky-500 px-5 py-1.5 font-bold text-white disabled:opacity-50">${parent ? 'Reply' : 'Post'}</button></div></div></div></div>`;
+  <div class="emo mb-2 hidden max-h-48 overflow-y-auto rounded-2xl border border-zinc-800 p-2"></div>
+  ${parent || quote ? '' : '<div class="sch mb-2 hidden"><div class="flex items-center gap-2 text-sm text-zinc-400"><span>Send on</span><input type="datetime-local" data-sched class="rounded bg-zinc-900 px-2 py-1 outline-none"></div></div>'}
+  ${parent ? '' : `<button type="button" data-rlbtn class="mb-2 block text-sm font-semibold text-sky-500 hover:text-sky-400">${RL['']}</button>`}
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-zinc-800 pt-3 text-sm font-semibold text-sky-500">
+    <label class="cursor-pointer hover:text-sky-400">Photo<input type="file" accept="image/*" multiple class="hidden"></label>
+    <button type="button" data-gifopen class="rounded border border-sky-500 px-1.5 text-xs font-bold hover:bg-sky-500/10">GIF</button>
+    ${parent ? '' : '<button type="button" data-pollbtn class="hover:text-sky-400">Poll</button>'}
+    <button type="button" data-emo class="text-base leading-none" aria-label="Emoji">😀</button>
+    ${parent || quote ? '' : '<button type="button" data-schbtn class="hover:text-sky-400">Schedule</button>'}
+    ${parent ? '' : '<button type="button" data-drafts class="text-zinc-400 hover:text-zinc-200">Drafts</button>'}
+    <span class="ml-auto flex items-center gap-3"><span class="ct font-normal text-zinc-500">${280 - text.length}</span><button class="sub rounded-full bg-sky-500 px-5 py-1.5 font-bold text-white disabled:opacity-50">${parent ? 'Reply' : 'Post'}</button></span>
+  </div></div></div>`;
 
 const inp = 'w-full rounded border border-zinc-800 bg-zinc-900 px-3 py-2 outline-none focus:border-sky-500';
 const openDlg = (h) => { dlg.innerHTML = h; if (!dlg.open) dlg.showModal(); };
@@ -146,6 +223,7 @@ const rerender = (id) => { document.querySelectorAll(`article[data-id="${id}"]`)
 // Passive updates (other people's activity, gradual fake boosts) roll the numbers in place instead of replacing the whole card.
 function syncCounts(p) {
   document.querySelectorAll(`article[data-id="${p.id}"]`).forEach((art) => {
+    if (p.poll) { const pe = art.querySelector('[data-pollbox]'); if (pe) pe.innerHTML = pollInner(p); }
     [['reply', p.replies], ['repost', p.reposts], ['like', p.likes], ['bookmark', p.saves]].forEach(([act, n]) => {
       const b = art.querySelector(`[data-act="${act}"]`); if (!b) return;
       let cnt = b.querySelector('.cnt');
@@ -196,7 +274,7 @@ async function gifs(q = '') {
   catch (x) { $('#gg').innerHTML = `<p class="p-6 text-red-400">${esc(x.message)}</p>`; }
 }
 function settings(v) {
-  v.innerHTML = head('Settings', '', false) + (!me ? guest() : `<div class="space-y-6 p-4"><div><h2 class="font-bold">Your account</h2><p class="text-sm text-zinc-500">@${esc(me.username)}</p><button data-edit class="mt-2 rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Edit profile, photo &amp; banner</button></div>
+  v.innerHTML = head('Settings', '', false) + (!me ? guest() : `<div class="space-y-6 p-4"><div><h2 class="font-bold">Drafts &amp; scheduled</h2><a href="#/drafts" class="mt-2 inline-block rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Manage drafts &amp; scheduled posts</a></div><div><h2 class="font-bold">Your account</h2><p class="text-sm text-zinc-500">@${esc(me.username)}</p><button data-edit class="mt-2 rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Edit profile, photo &amp; banner</button></div>
   <form id="pf" class="space-y-2"><h2 class="font-bold">Change password</h2><input name="current" type="password" required placeholder="Current password" class="${inp}"><input name="next" type="password" required minlength="8" placeholder="New password (8+ characters)" class="${inp}"><p class="err text-sm text-red-400"></p><button class="rounded-full bg-white px-5 py-2 font-bold text-black">Update password</button></form>
   <div class="border-t border-zinc-800 pt-4"><h2 class="mb-2 font-bold text-red-500">Danger zone</h2><button data-out class="mr-2 rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Log out</button><button data-delacct class="rounded-full bg-red-600 px-4 py-1.5 font-bold">Delete account</button></div></div>`);
 }
@@ -360,6 +438,22 @@ async function notifications(v, pg) {
   };
   await load(); pg.refresh = load;
 }
+const DR = {};
+async function drafts(v, pg) {
+  if (!me) return void (v.innerHTML = head('Drafts & scheduled') + guest());
+  v.innerHTML = head('Drafts & scheduled') + `<div class="dl">${skel}</div>`;
+  const l = v.querySelector('.dl'); let sig = null;
+  const when = (t) => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const load = async () => {
+    try {
+      const [sc, dr] = await Promise.all([api('/scheduled'), api('/drafts')]), nsig = JSON.stringify([sc.map((x) => x.id + x.at), dr.map((x) => x.id + x.text)]);
+      if (nsig === sig) return; sig = nsig; dr.forEach((d) => (DR[d.id] = d));
+      l.innerHTML = '<h2 class="px-4 pt-4 text-xl font-extrabold">Scheduled</h2>' + (sc.length ? sc.map((x) => `<div class="border-b border-zinc-800 p-4"><div class="mb-1 text-xs font-bold text-sky-400">Sends ${when(x.at)}</div><p class="whitespace-pre-wrap break-words">${esc(x.text) || '<span class="text-zinc-500">(image)</span>'}</p><div class="mt-3 flex gap-2"><button data-pubnow="${x.id}" class="rounded-full bg-sky-500 px-4 py-1 text-sm font-bold text-white">Post now</button><button data-delsch="${x.id}" class="rounded-full border border-zinc-600 px-4 py-1 text-sm hover:bg-zinc-900">Delete</button></div></div>`).join('') : '<p class="p-6 text-zinc-500">No scheduled posts. Use “Schedule” when composing.</p>')
+        + '<h2 class="px-4 pt-4 text-xl font-extrabold">Drafts</h2>' + (dr.length ? dr.map((x) => `<div class="border-b border-zinc-800 p-4"><div class="mb-1 text-xs text-zinc-500">Saved ${when(x.at)}</div><p class="whitespace-pre-wrap break-words">${esc(x.text)}</p><div class="mt-3 flex gap-2"><button data-dredit="${x.id}" class="rounded-full bg-white px-4 py-1 text-sm font-bold text-black">Edit</button><button data-drdel="${x.id}" class="rounded-full border border-zinc-600 px-4 py-1 text-sm hover:bg-zinc-900">Delete</button></div></div>`).join('') : '<p class="p-6 text-zinc-500">No drafts. Close the composer with text in it and it’s saved here.</p>');
+    } catch (x) { l.innerHTML = `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
+  };
+  await load(); pg.refresh = load;
+}
 async function pollUnread() {
   if (!token) return;
   try { const d = await api('/notifications/count'); if (d.unread !== unread) { unread = d.unread; chrome(); } } catch {}
@@ -369,7 +463,7 @@ async function thread(v, id, pg) {
   v.innerHTML = head('Post');
   try {
     const d = await api('/posts/' + id);
-    v.insertAdjacentHTML('beforeend', (d.parent ? card(d.parent) : '') + card(d.post) + (me ? `<div class="border-b border-zinc-800">${composer(d.post.id)}</div>` : '') + d.replies.map(card).join('') + (d.replies.length ? '' : '<p class="nr p-10 text-center text-zinc-500">No replies yet.</p>'));
+    v.insertAdjacentHTML('beforeend', (d.parent ? card(d.parent) : '') + card(d.post) + (me ? (d.post.canReply === false ? `<div class="border-b border-zinc-800 p-4 text-sm text-zinc-500">${replyMsg(d.post)}</div>` : `<div class="border-b border-zinc-800">${composer(d.post.id)}</div>`) : '') + d.replies.map(card).join('') + (d.replies.length ? '' : '<p class="nr p-10 text-center text-zinc-500">No replies yet.</p>'));
     // Live-refreshes this post's (and its parent's) like/repost/save/reply counts, and reveals any scheduled fake replies as they become visible.
     pg.refresh = async () => {
       try {
@@ -394,6 +488,7 @@ function route() {
     const v = document.createElement('div'); v.className = 'pg'; $('#view').append(v); pg = pages[h] = { el: v, y: 0 };
     if (a === 'u') (c === 'followers' || c === 'following' ? people(v, b, c, pg) : profile(v, b, pg));
     else if (a === 'notifications') notifications(v, pg);
+    else if (a === 'drafts') drafts(v, pg);
     else if (a === 'p') thread(v, b, pg);
     else if (a === 'settings') settings(v);
     else if (a === 'admin') admin(v);
@@ -427,23 +522,30 @@ async function trend() {
 }
 
 async function submit(c) {
-  const b = c.querySelector('.sub'), ta = c.querySelector('textarea'), fi = c.querySelector('input[type=file]'), pid = c.dataset.parent, fd = new FormData();
-  fd.append('text', ta.value); if (pid) fd.append('parent', pid); if (c.dataset.quote) fd.append('quote', c.dataset.quote); if (fi.files[0]) fd.append('image', fi.files[0]); else if (c.dataset.gif) fd.append('gif', c.dataset.gif);
+  const b = c.querySelector('.sub'), ta = c.querySelector('textarea'), pid = c.dataset.parent, qid = c.dataset.quote, fd = new FormData(), files = c._files || [];
+  fd.append('text', ta.value); if (pid) fd.append('parent', pid); if (qid) fd.append('quote', qid);
+  files.forEach((f) => fd.append('image', f.file));
+  if (!files.length && c.dataset.gif) fd.append('gif', c.dataset.gif);
+  if (c.dataset.pollon) fd.append('poll', JSON.stringify({ options: [...c.querySelectorAll('[data-po]')].map((i) => i.value.trim()).filter(Boolean), minutes: c.querySelector('[data-pomin]').value }));
+  const sch = c.querySelector('[data-sched]')?.value; if (sch) fd.append('schedule', new Date(sch).toISOString());
+  if (c.dataset.rl) fd.append('replyLimit', c.dataset.rl);
   b.disabled = true;
   try {
     const p = await api('/posts', { method: 'POST', body: fd }), inDlg = !!c.closest('dialog');
-    ta.value = ''; fi.value = ''; delete c.dataset.gif; c.querySelector('.pv').classList.add('hidden'); c.querySelector('.ct').textContent = 280;
+    c.dataset.sent = '1'; if (c.dataset.draft) api('/drafts/' + c.dataset.draft, { method: 'DELETE' }).catch(() => {});
+    resetComposer(c);
     if (inDlg) dlg.close();
+    if (p.scheduled) return void toast('Scheduled for ' + new Date(p.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }));
     Object.keys(pages).forEach((k) => k !== cur && k !== '#/' && drop(k));
     if (pid) {
       if (P[pid]) { P[pid].replies++; rerender(pid); }
       const tc = inDlg ? document.querySelector(`.pg:not([hidden]) .cmp[data-parent="${pid}"]`) : c;
       if (tc) { tc.closest('.pg').querySelector('.nr')?.remove(); ins(tc.parentElement, 'afterend', card(p)); }
     } else { const f = pages['#/']?.el.querySelector('.f'); if (f) ins(f, 'afterbegin', card(p)); }
-    const qid = c.dataset.quote; if (qid && P[qid]) { P[qid].reposts++; rerender(qid); }
+    if (qid && P[qid]) { P[qid].reposts++; rerender(qid); }
     toast(pid ? 'Your reply was sent' : 'Your post was sent'); trend();
   } catch (x) { toast(x.message, 1); }
-  b.disabled = false;
+  finally { b.disabled = false; }
 }
 
 document.addEventListener('click', async (e) => {
@@ -453,9 +555,38 @@ document.addEventListener('click', async (e) => {
   if (e.target === gd) return gd.close();
   try {
     const gi = e.target.closest('img[data-gif]');
-    if (gi) { gt.dataset.gif = gi.dataset.gif; const pv = gt.querySelector('.pv'); pv.src = gi.dataset.gif; pv.classList.remove('hidden'); gt.querySelector('input[type=file]').value = ''; return gd.close(); }
+    if (gi) { gt.dataset.gif = gi.dataset.gif; (gt._files || []).forEach((f) => URL.revokeObjectURL(f.url)); gt._files = []; togglePoll(gt, false); renderPv(gt); return gd.close(); }
     if ('gifopen' in d) { gt = b.closest('.cmp'); gd.showModal(); return gifs(); }
     if (d.qlink) return void (location.hash = '#/p/' + d.qlink);
+    if (d.img) return openDlg(`<img src="${esc(d.img)}" class="max-h-[85vh] w-full object-contain">`);
+    if (d.rmimg !== undefined) { const c = b.closest('.cmp'); if (d.rmimg === 'gif') delete c.dataset.gif; else { const [f] = c._files.splice(+d.rmimg, 1); URL.revokeObjectURL(f.url); } return renderPv(c); }
+    if (d.vote !== undefined) {
+      if (!me) return openAuth();
+      const id = art.dataset.id, p = P[id], i = +d.vote, box = b.closest('[data-pollbox]');
+      if (!p?.poll || p.poll.voted >= 0 || p.poll.ended) return;
+      p.poll.options[i].votes++; p.poll.total++; p.poll.voted = i; box.innerHTML = pollInner(p);
+      try { p.poll = (await api(`/posts/${id}/vote`, { method: 'POST', body: JSON.stringify({ option: i }) })).poll; box.innerHTML = pollInner(p); }
+      catch (x) { p.poll.options[i].votes--; p.poll.total--; p.poll.voted = -1; box.innerHTML = pollInner(p); toast(x.message, 1); }
+      return;
+    }
+    if (d.mn) return pickMention(b.closest('.cmp'), d.mn);
+    if (d.e) { const ta = b.closest('.cmp').querySelector('textarea'); if (ta.value.length + d.e.length > 280) return; ta.setRangeText(d.e, ta.selectionStart, ta.selectionEnd, 'end'); ta.dispatchEvent(new Event('input', { bubbles: true })); return ta.focus(); }
+    if ('emo' in d) { const em = b.closest('.cmp').querySelector('.emo'); if (!em.innerHTML) em.innerHTML = emoHTML(); return em.classList.toggle('hidden'); }
+    if ('pollbtn' in d) return togglePoll(b.closest('.cmp'));
+    if ('porm' in d) return togglePoll(b.closest('.cmp'), false);
+    if ('poadd' in d) { const hid = [...b.closest('.cmp').querySelectorAll('[data-po].hidden')]; hid[0]?.classList.remove('hidden'); if (hid.length <= 1) b.classList.add('hidden'); return; }
+    if ('schbtn' in d) {
+      const c = b.closest('.cmp'), s = c.querySelector('.sch'), i = s.querySelector('input'); s.classList.toggle('hidden');
+      if (s.classList.contains('hidden')) { i.value = ''; c.querySelector('.sub').textContent = 'Post'; }
+      else { i.value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000 + 3600e3).toISOString().slice(0, 16); c.querySelector('.sub').textContent = 'Schedule'; }
+      return;
+    }
+    if ('rlbtn' in d) { const c = b.closest('.cmp'), o = ['', 'following', 'mentioned'], nx = o[(o.indexOf(c.dataset.rl) + 1) % 3]; c.dataset.rl = nx; b.textContent = RL[nx]; return; }
+    if ('drafts' in d) { if (dlg.open) dlg.close(); return void (location.hash = '#/drafts'); }
+    if (d.dredit) return openDlg(`<div class="p-2">${composer('', '', DR[d.dredit].text, d.dredit)}</div>`);
+    if (d.drdel) { await api('/drafts/' + d.drdel, { method: 'DELETE' }); toast('Draft deleted'); return pages[cur]?.refresh?.(); }
+    if (d.pubnow) { await api(`/posts/${d.pubnow}/publish`, { method: 'POST' }); drop('#/'); toast('Posted'); return pages[cur]?.refresh?.(); }
+    if (d.delsch) { if (!confirm('Delete this scheduled post?')) return; await api('/posts/' + d.delsch, { method: 'DELETE' }); toast('Scheduled post deleted'); return pages[cur]?.refresh?.(); }
     if (d.rq) {
       const id = b.closest('[data-pid]').dataset.pid, p = P[id];
       if (d.rq === 'quote') return openDlg(`<div class="p-2">${composer('', id)}</div>`);
@@ -464,6 +595,7 @@ document.addEventListener('click', async (e) => {
       return api(`/posts/${id}/repost`, { method: 'POST' });
     }
     if (d.m) { const id = b.closest('[data-pid]').dataset.pid; dlg.close(); if (d.m === 'copy') { navigator.clipboard?.writeText(location.href.split('#')[0] + '#/p/' + id); return toast('Link copied'); } if (d.m === 'report') return setTimeout(() => reportDlg('post', id), 250);
+      if (d.m === 'edit') return setTimeout(() => openDlg(`<form id="edf" data-id="${id}" class="space-y-3 p-4"><h2 class="text-xl font-extrabold">Edit post</h2><textarea name="text" maxlength="280" rows="4" class="${inp}">${esc(P[id].text)}</textarea><p class="err text-sm text-red-400"></p><div class="flex justify-end"><button class="rounded-full bg-white px-5 py-2 font-bold text-black">Save</button></div></form>`), 250);
       if (d.m === 'pin') { const r = await api('/posts/' + id + '/pin', { method: 'POST' }); me.pinned = r.pinned ? id : null; localStorage.me = JSON.stringify(me); toast(r.pinned ? 'Pinned to your profile' : 'Unpinned'); const k = '#/u/' + me.username; drop(k); if (cur === k) { cur = null; route(); } return; }
       if (d.m === 'muteu' || d.m === 'blocku') return relate(d.m === 'muteu' ? 'mute' : 'block', P[id].author.username);
       return del(id); }
@@ -494,8 +626,9 @@ document.addEventListener('click', async (e) => {
       if (!me) return openAuth();
       const id = art.dataset.id, p = P[id];
       if (d.act === 'repost') return openDlg(`<div class="p-2" data-pid="${id}"><button data-rq="toggle" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900">${p.reposted ? 'Undo repost' : 'Repost'}</button><button data-rq="quote" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900">Quote</button></div>`);
+      if (d.act === 'reply' && p.canReply === false) return toast(replyMsg(p), 1);
       if (d.act === 'reply') { b.classList.add('a-reply'); return setTimeout(() => openDlg(`<div class="p-2">${composer(id)}</div>`), 200); }
-      if (d.act === 'more') return openDlg(`<div class="p-2" data-pid="${id}">${[['copy', 'Copy link'], ...(me.id === p.author?.id && !p.reply && !p.repostBy ? [['pin', me.pinned === id ? 'Unpin from profile' : 'Pin to profile']] : []), ...(me.id !== p.author?.id ? [['muteu', `Mute @${p.author?.username}`], ['blocku', `Block @${p.author?.username}`]] : []), ['report', 'Report post'], ...(me.id === p.author?.id || me.admin ? [['del', 'Delete post']] : [])].map(([m, t]) => `<button data-m="${m}" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900 ${m === 'del' ? 'text-red-500' : ''}${m === 'muteu' || m === 'blocku' ? 'text-red-400' : ''}">${t}</button>`).join('')}</div>`);
+      if (d.act === 'more') return openDlg(`<div class="p-2" data-pid="${id}">${[['copy', 'Copy link'], ...(me.id === p.author?.id && !p.repostBy && Date.now() - new Date(p.at) < 3600e3 ? [['edit', 'Edit post']] : []), ...(me.id === p.author?.id && !p.reply && !p.repostBy ? [['pin', me.pinned === id ? 'Unpin from profile' : 'Pin to profile']] : []), ...(me.id !== p.author?.id ? [['muteu', `Mute @${p.author?.username}`], ['blocku', `Block @${p.author?.username}`]] : []), ['report', 'Report post'], ...(me.id === p.author?.id || me.admin ? [['del', 'Delete post']] : [])].map(([m, t]) => `<button data-m="${m}" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900 ${m === 'del' ? 'text-red-500' : ''}${m === 'muteu' || m === 'blocku' ? 'text-red-400' : ''}">${t}</button>`).join('')}</div>`);
       if (d.act === 'del') { if (!confirm('Delete this post?')) return; await api('/posts/' + id, { method: 'DELETE' }); art.style.cssText = 'opacity:0;transform:translateX(24px);transition:.25s'; return setTimeout(() => document.querySelectorAll(`article[data-id="${id}"]`).forEach((a) => a.remove()), 250); }
       const [k, n] = { like: ['liked', 'likes'], repost: ['reposted', 'reposts'], bookmark: ['bookmarked', 'saves'] }[d.act];
       p[k] = !p[k]; if (n) p[n] += p[k] ? 1 : -1; rerender(id); if (p[k]) document.querySelectorAll(`article[data-id="${id}"] [data-act="${d.act}"]`).forEach((x) => x.classList.add('a-' + d.act)); if (d.act === 'bookmark') drop('#/bookmarks');
@@ -508,6 +641,7 @@ document.addEventListener('submit', async (e) => {
   e.preventDefault(); const f = e.target, body = JSON.stringify(Object.fromEntries(new FormData(f)));
   try {
     if (f.id === 'af') { const d = await api('/auth/' + (reg ? 'register' : 'login'), { method: 'POST', body }); localStorage.token = d.token; localStorage.me = JSON.stringify(d.user); location.reload(); }
+    if (f.id === 'edf') { const id = f.dataset.id, o = P[id], np = await api('/posts/' + id, { method: 'PATCH', body }); P[id] = { ...np, pinned: o.pinned, repostBy: o.repostBy }; dlg.close(); rerender(id); toast('Post updated'); }
     if (f.id === 'pf') { await api('/me/password', { method: 'POST', body }); f.reset(); toast('Password updated'); }
     if (f.id === 'ef') { me = (await api('/me', { method: 'PATCH', body: new FormData(f) })).user; localStorage.me = JSON.stringify(me); dlg.close(); chrome(); Object.keys(pages).forEach(drop); cur = null; route(); toast('Profile saved'); }
     if (f.id === 'ffForm') {
@@ -532,14 +666,49 @@ document.addEventListener('submit', async (e) => {
     }
   } catch (x) { f.querySelector('.err').textContent = x.message; }
 });
-document.addEventListener('input', (e) => { const c = e.target.closest('.cmp'); if (c && e.target.tagName === 'TEXTAREA') c.querySelector('.ct').textContent = 280 - e.target.value.length; });
-document.addEventListener('change', (e) => {
+let mnT;
+document.addEventListener('input', (e) => {
+  const c = e.target.closest('.cmp'); if (!c) return;
+  if (e.target.tagName === 'TEXTAREA') {
+    const ta = e.target, n = 280 - ta.value.length, ct = c.querySelector('.ct'), box = c.querySelector('.mn');
+    ct.textContent = n; ct.classList.toggle('text-red-400', n < 20);
+    const m = ta.value.slice(0, ta.selectionStart).match(/(^|\s)@(\w{1,15})$/); clearTimeout(mnT);
+    if (!m) return box.classList.add('hidden');
+    mnT = setTimeout(async () => {
+      try { const us = await api('/mentions?q=' + m[2]); box.innerHTML = us.map((u, i) => `<button type="button" data-mn="${esc(u.username)}" class="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-zinc-900 ${i ? '' : 'bg-zinc-900'}">${dot(u)}<span class="min-w-0 truncate"><b>${esc(u.name)}</b> <span class="text-zinc-500">@${esc(u.username)}</span></span></button>`).join(''); box.classList.toggle('hidden', !us.length); } catch {}
+    }, 150);
+  }
+  if (e.target.matches('[data-sched]')) c.querySelector('.sub').textContent = e.target.value ? 'Schedule' : 'Post';
+});
+document.addEventListener('change', async (e) => {
   const c = e.target.closest('.cmp'); if (!c || e.target.type !== 'file') return;
-  const p = c.querySelector('.pv'), f = e.target.files[0]; p.classList.toggle('hidden', !f); if (f) p.src = URL.createObjectURL(f);
+  const list = [...e.target.files].filter((f) => f.type.startsWith('image/')); e.target.value = '';
+  if (!list.length) return;
+  togglePoll(c, false); delete c.dataset.gif; c._files = c._files || [];
+  for (const f of list) {
+    if (c._files.length >= 4) { toast('You can add up to 4 images', 1); break; }
+    const file = await compress(f); c._files.push({ file, url: URL.createObjectURL(file) });
+  }
+  renderPv(c);
 });
 document.addEventListener('change', (e) => { const s = e.target.closest('[data-badge]'); if (s) api('/admin/users/' + s.closest('[data-uid]').dataset.uid, { method: 'POST', body: JSON.stringify({ badge: s.value }) }).then(() => toast('Badge updated')).catch((x) => toast(x.message, 1)); });
 let gtm; document.addEventListener('input', (e) => { if (e.target.id === 'gq') { clearTimeout(gtm); gtm = setTimeout(() => gifs(e.target.value), 400); } });
 document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.target.id === 'sq' || e.target.classList.contains('sq')) && e.target.value.trim()) location.hash = '#/search/' + encodeURIComponent(e.target.value.trim()); });
+document.addEventListener('keydown', (e) => { // arrow/enter/tab/esc through @mention suggestions
+  const c = e.target.closest?.('.cmp'), box = c?.querySelector('.mn');
+  if (!box || box.classList.contains('hidden') || e.target.tagName !== 'TEXTAREA') return;
+  const items = [...box.children]; let i = items.findIndex((x) => x.classList.contains('bg-zinc-900'));
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[i]?.classList.remove('bg-zinc-900'); i = (i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length; items[i].classList.add('bg-zinc-900'); }
+  else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickMention(c, items[Math.max(i, 0)].dataset.mn); }
+  else if (e.key === 'Escape') { e.preventDefault(); box.classList.add('hidden'); }
+});
+// Closing the composer dialog with unsent text keeps it as a draft
+dlg.addEventListener('close', () => {
+  const c = dlg.querySelector('.cmp'); if (!c || !me || c.dataset.sent || c.dataset.parent || c.dataset.quote) return;
+  const t = c.querySelector('textarea').value.trim(), id = c.dataset.draft; if (!t) return;
+  c.dataset.sent = '1';
+  api(id ? '/drafts/' + id : '/drafts', { method: id ? 'PUT' : 'POST', body: JSON.stringify({ text: t }) }).then(() => toast('Saved to drafts')).catch(() => {});
+});
 addEventListener('hashchange', () => { chrome(); route(); });
 chrome(); route(); sugg(); trend();
 if (token) { pollUnread(); setInterval(pollUnread, 10000); }

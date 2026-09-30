@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express'), cors = require('cors'), mongoose = require('mongoose'), bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken'), multer = require('multer'), path = require('path');
+const dns = require('dns').promises, net = require('net');
 
 const { MONGODB_URI, JWT_SECRET = 'dev-secret', POSTFILE_API_KEY } = process.env;
 const PF = 'https://postfile.net/v1', pfH = { 'X-API-Key': POSTFILE_API_KEY };
@@ -18,19 +19,23 @@ const User = M('User', {
 const Post = M('Post', {
   author: { type: Id, ref: 'User', index: true }, text: { type: String, maxlength: 280, default: '' },
   media: { url: String, fileId: String }, likes: [Id], reposts: [Id], replies: { type: Number, default: 0 }, saves: { type: Number, default: 0 },
-  parent: { type: Id, index: true }, repostOf: { type: Id, ref: 'Post' }, quoteOf: { type: Id, ref: 'Post' }, quoteDeleted: Boolean, quotes: { type: Number, default: 0 }, visibleAt: Date,
+  parent: { type: Id, index: true }, repostOf: { type: Id, ref: 'Post' }, quoteOf: { type: Id, ref: 'Post' }, quoteDeleted: Boolean, quotes: { type: Number, default: 0 }, visibleAt: Date, scheduled: Boolean, editedAt: Date, replyLimit: String,
+  images: [{ _id: false, url: String, fileId: String }],
+  poll: { options: [{ _id: false, text: String, votes: [Id] }], endsAt: Date },
+  preview: { url: String, title: String, description: String, image: String, site: String },
   fake: { likes: mongoose.Schema.Types.Mixed, reposts: mongoose.Schema.Types.Mixed, saves: mongoose.Schema.Types.Mixed },
 });
 
 const Report = M('Report', { by: { type: Id, ref: 'User' }, post: { type: Id, ref: 'Post' }, user: { type: Id, ref: 'User' }, reason: String, status: { type: String, default: 'open' } });
-const Notif = M('Notif', { to: { type: Id, index: true }, from: { type: Id, ref: 'User' }, type: String, post: { type: Id, ref: 'Post' }, read: { type: Boolean, default: false } });
+const Notif = M('Notif', { to: { type: Id, index: true }, from: { type: Id, ref: 'User' }, type: String, post: { type: Id, ref: 'Post' }, read: { type: Boolean, default: false }, visibleAt: Date });
+const Draft = M('Draft', { user: { type: Id, index: true }, text: String });
 const has = (a, id) => a.some((x) => String(x) === String(id));
 // Users whose content I shouldn't see: ones I blocked or muted, plus ones who blocked me.
 const hiddenFor = async (me) => (me ? [...new Set([...me.blocked, ...me.muted, ...(await User.distinct('_id', { blocked: me._id }))].map(String))] : []);
 // One notification per (recipient, sender, type, post); upsert makes repeat likes/follows idempotent.
-async function notify(to, from, type, post) {
+async function notify(to, from, type, post, at) {
   if (!to || String(to) === String(from)) return;
-  await Notif.updateOne({ to, from, type, post: post || null }, { $setOnInsert: { read: false } }, { upsert: true });
+  await Notif.updateOne({ to, from, type, post: post || null }, { $setOnInsert: { read: false, ...(at && { visibleAt: at }) } }, { upsert: true });
 }
 const unnotify = (to, from, type, post) => Notif.deleteOne({ to, from, type, post: post || null });
 // Interpolates a fake count between startVal and target as `now` moves from startAt to endAt; no background job needed.
@@ -43,13 +48,27 @@ function fakeVal(f) {
   return Math.round((f.startVal || 0) + (f.target - (f.startVal || 0)) * (now - s) / (e - s));
 }
 // Posts scheduled to appear later (fake replies spread over time) are hidden from lists until their moment arrives.
-const visible = { $or: [{ visibleAt: null }, { visibleAt: { $exists: false } }, { visibleAt: { $lte: new Date() } }] };
+const visible = () => ({ $or: [{ visibleAt: null }, { visibleAt: { $exists: false } }, { visibleAt: { $lte: new Date() } }] });
 const pub = (u) => ({ id: u.id, username: u.username, name: u.name, bio: u.bio, avatar: u.avatar, banner: u.banner, badge: u.badge, admin: !!u.admin, pinned: u.pinned ? String(u.pinned) : null });
 const pop = (q) => q.populate('author').populate({ path: 'repostOf', populate: { path: 'author' } }).populate({ path: 'quoteOf', populate: { path: 'author' } });
+const replyMsg = (o) => (o.replyLimit === 'following' ? `Only accounts @${o.author?.username} follows can reply` : 'Only people mentioned in this post can reply');
+const canReplyTo = (o, me) => {
+  const rl = o.replyLimit || 'all';
+  if (rl === 'all' || !me || !o.author || String(o.author._id ?? o.author) === me.id) return true;
+  if (rl === 'following') return has(o.author.following || [], me.id);
+  return new RegExp(`(^|\\s)@${me.username}\\b`, 'i').test(o.text || '');
+};
+const pollShape = (o, me) => {
+  const q = o.poll; if (!q?.options?.length) return null;
+  const total = q.options.reduce((a, x) => a + x.votes.length, 0);
+  return { options: q.options.map((x) => ({ text: x.text, votes: x.votes.length })), total, endsAt: q.endsAt, ended: q.endsAt < new Date(), voted: me ? q.options.findIndex((x) => has(x.votes, me.id)) : -1 };
+};
 const shape = (p, me) => {
   const o = p.repostOf?.author ? p.repostOf : p;
   return {
-    id: o.id, text: o.text, media: o.media?.url, at: o.createdAt, author: o.author && pub(o.author),
+    id: o.id, text: o.text, media: o.media?.url, images: (o.images?.length ? o.images : o.media?.url ? [o.media] : []).map((i) => i.url), at: o.createdAt, author: o.author && pub(o.author),
+    edited: !!o.editedAt, replyLimit: o.replyLimit || 'all', canReply: canReplyTo(o, me), poll: pollShape(o, me), scheduled: !!(o.scheduled && o.visibleAt && o.visibleAt > new Date()),
+    preview: o.preview?.title ? { url: o.preview.url, title: o.preview.title, description: o.preview.description, image: o.preview.image, site: o.preview.site } : null,
     likes: o.likes.length + fakeVal(o.fake?.likes), liked: !!me && has(o.likes, me.id),
     reposts: o.reposts.length + (o.quotes || 0) + fakeVal(o.fake?.reposts), reposted: !!me && has(o.reposts, me.id),
     replies: o.replies, reply: !!o.parent, bookmarked: !!me && has(me.bookmarks, o.id), saves: (o.saves || 0) + fakeVal(o.fake?.saves),
@@ -113,7 +132,7 @@ app.get('/api/posts', async (req, res) => {
     else { f.author = u._id; if (kind === 'replies') f.parent = { $ne: null }; if (kind === 'media') { f['media.url'] = { $exists: true, $ne: null }; f.repostOf = null; } if (kind === 'user') pinnedUser = u; }
   } else if (hidden.length) f.author = { $nin: hidden };
   if (before) f.createdAt = { $lt: new Date(before) };
-  let out = (await pop(Post.find({ ...f, ...visible }).sort('-createdAt').limit(20))).map((p) => shape(p, me));
+  let out = (await pop(Post.find({ ...f, ...visible() }).sort('-createdAt').limit(20))).map((p) => shape(p, me));
   if (pinnedUser?.pinned && !before) { // pinned post leads the first page of a profile
     const pp = await pop(Post.findById(pinnedUser.pinned));
     if (pp) out = [{ ...shape(pp, me), pinned: true }, ...out.filter((x) => x.id !== pp.id)];
@@ -124,43 +143,120 @@ app.get('/api/posts', async (req, res) => {
 app.get('/api/posts/refresh', async (req, res) => {
   const ids = String(req.query.ids || '').split(',').filter((x) => /^[a-f0-9]{24}$/.test(x)).slice(0, 150);
   if (!ids.length) return res.json([]);
-  res.json((await pop(Post.find({ _id: { $in: ids } }))).map((p) => shape(p, req.me)));
+  res.json((await pop(Post.find({ _id: { $in: ids }, ...visible() }))).map((p) => shape(p, req.me)));
 });
 
 app.get('/api/posts/:id', async (req, res) => {
   const p = await pop(Post.findById(req.params.id));
   if (!p) return res.sendStatus(404);
+  if (p.visibleAt && p.visibleAt > new Date() && String(p.author?._id) !== req.me?.id) return res.sendStatus(404);
   const hidden = await hiddenFor(req.me);
-  const [rs, par] = await Promise.all([pop(Post.find({ parent: p._id, author: { $nin: hidden }, ...visible }).sort('createdAt').limit(50)), p.parent ? pop(Post.findById(p.parent)) : null]);
+  const [rs, par] = await Promise.all([pop(Post.find({ parent: p._id, author: { $nin: hidden }, ...visible() }).sort('createdAt').limit(50)), p.parent ? pop(Post.findById(p.parent)) : null]);
   res.json({ post: shape(p, req.me), parent: par && shape(par, req.me), replies: rs.map((r) => shape(r, req.me)) });
 });
 
-app.post('/api/posts', auth, upload.single('image'), async (req, res) => {
-  const text = (req.body.text || '').trim();
-  if (!text && !req.file && !req.body.gif && !req.body.quote) return res.status(400).json({ error: 'Write something or add an image' });
-  let media;
-  if (req.file) { // image goes to PostFile server-side so the key stays secret
-    if (!req.file.mimetype.startsWith('image/')) return res.status(400).json({ error: 'Only images are supported' });
-    const form = new FormData();
-    form.append('file', new Blob([req.file.buffer], { type: req.file.mimetype }), req.file.originalname);
-    const r = await fetch(`${PF}/upload`, { method: 'POST', headers: pfH, body: form });
-    if (!r.ok) return res.status(502).json({ error: `Image upload failed (${r.status})` });
-    const f = await r.json();
-    media = { url: f.url, fileId: f.file_id };
-  }
-  if (!req.file && req.body.gif) { try { if (new URL(req.body.gif).hostname.endsWith('giphy.com')) media = { url: req.body.gif }; } catch {} }
-  const parent = req.body.parent || undefined;
+const EDIT_MS = 60 * 60 * 1000;
+app.post('/api/posts', auth, upload.array('image', 4), async (req, res) => {
+  const text = (req.body.text || '').trim().slice(0, 280), files = req.files || [], parent = req.body.parent || undefined;
   const quoteOf = /^[a-f0-9]{24}$/.test(req.body.quote || '') && (await Post.exists({ _id: req.body.quote })) ? req.body.quote : undefined;
-  const p = await Post.create({ author: req.me._id, text, media, parent, quoteOf });
+  let poll;
+  if (req.body.poll) {
+    if (parent) return res.status(400).json({ error: 'Replies can’t have polls' });
+    if (files.length || req.body.gif) return res.status(400).json({ error: 'Polls can’t have images' });
+    try {
+      const pl = JSON.parse(req.body.poll);
+      const opts = (Array.isArray(pl.options) ? pl.options : []).map((x) => String(x).trim().slice(0, 25)).filter(Boolean);
+      if (opts.length < 2 || opts.length > 4) return res.status(400).json({ error: 'A poll needs 2 to 4 choices' });
+      poll = { options: opts.map((t) => ({ text: t, votes: [] })), endsAt: new Date(Date.now() + Math.min(10080, Math.max(5, parseInt(pl.minutes) || 1440)) * 60000) };
+    } catch { return res.status(400).json({ error: 'Bad poll' }); }
+  }
+  if (!text && !files.length && !req.body.gif && !quoteOf && !poll) return res.status(400).json({ error: 'Write something or add an image' });
+  let sched;
+  if (req.body.schedule) {
+    sched = new Date(req.body.schedule);
+    if (parent || quoteOf) return res.status(400).json({ error: 'Only new posts can be scheduled' });
+    if (isNaN(sched) || sched < new Date(Date.now() + 60000) || sched > new Date(Date.now() + 365 * 864e5)) return res.status(400).json({ error: 'Pick a time between 1 minute and 1 year from now' });
+  }
+  if (parent) {
+    const pp = await Post.findById(parent).populate('author');
+    if (!pp) return res.status(404).json({ error: 'That post no longer exists' });
+    if (!canReplyTo(pp, req.me)) return res.status(403).json({ error: replyMsg(pp) });
+  }
+  if (files.some((f) => !f.mimetype.startsWith('image/'))) return res.status(400).json({ error: 'Only images are supported' });
+  let images = [];
+  if (files.length) { // images go to PostFile server-side so the key stays secret
+    const ups = await Promise.all(files.map(pfUpload));
+    if (ups.some((u) => !u)) { ups.filter(Boolean).forEach((u) => pfDelete(u.fileId)); return res.status(502).json({ error: 'Image upload failed' }); }
+    images = ups;
+  } else if (req.body.gif) { try { if (new URL(req.body.gif).hostname.endsWith('giphy.com')) images = [{ url: req.body.gif }]; } catch {} }
+  const preview = !images.length && !poll && !quoteOf ? await linkPreview(text) : undefined;
+  const replyLimit = ['following', 'mentioned'].includes(req.body.replyLimit) && !parent ? req.body.replyLimit : undefined;
+  const p = await Post.create({ author: req.me._id, text, media: images[0], images, parent, quoteOf, poll, preview, replyLimit, ...(sched && { scheduled: true, visibleAt: sched, createdAt: sched }) });
   if (quoteOf) await Post.updateOne({ _id: quoteOf }, { $inc: { quotes: 1 } });
   if (parent) await Post.updateOne({ _id: parent }, { $inc: { replies: 1 } });
   const told = new Set([String(req.me._id)]);
-  const tell = async (to, type) => { if (to && !told.has(String(to))) { told.add(String(to)); await notify(to, req.me._id, type, p._id); } };
+  const tell = async (to, type) => { if (to && !told.has(String(to))) { told.add(String(to)); await notify(to, req.me._id, type, p._id, sched); } };
   if (parent) await tell((await Post.findById(parent).select('author'))?.author, 'reply');
   if (quoteOf) await tell((await Post.findById(quoteOf).select('author'))?.author, 'quote');
   const names = [...new Set((text.match(/(?:^|\s)@(\w{3,15})/g) || []).map((x) => x.trim().slice(1).toLowerCase()))].slice(0, 10);
   if (names.length) for (const u of await User.find({ username: { $in: names }, ghost: { $ne: true } }).select('_id')) await tell(u._id, 'mention');
   res.json(shape(await pop(Post.findById(p.id)), req.me));
+});
+
+app.patch('/api/posts/:id', auth, async (req, res) => {
+  const p = await Post.findOne({ _id: req.params.id, author: req.me._id, repostOf: null });
+  if (!p) return res.sendStatus(404);
+  if (Date.now() - p.createdAt > EDIT_MS) return res.status(403).json({ error: 'Posts can only be edited for 60 minutes' });
+  const text = String(req.body.text || '').trim().slice(0, 280);
+  if (!text && !p.media?.url && !p.quoteOf && !p.poll?.options?.length) return res.status(400).json({ error: 'A post can’t be empty' });
+  p.text = text;
+  if (!(p.visibleAt && p.visibleAt > new Date())) p.editedAt = new Date();
+  if (!p.images?.length && !p.poll?.options?.length && !p.quoteOf) p.preview = await linkPreview(text);
+  await p.save();
+  res.json(shape(await pop(Post.findById(p.id)), req.me));
+});
+app.post('/api/posts/:id/vote', auth, async (req, res) => {
+  const p = await Post.findById(req.params.id), i = parseInt(req.body.option);
+  if (!p?.poll?.options?.length) return res.sendStatus(404);
+  if (p.poll.endsAt < new Date()) return res.status(400).json({ error: 'This poll has ended' });
+  if (!(i >= 0 && i < p.poll.options.length)) return res.status(400).json({ error: 'Bad choice' });
+  const r = await Post.updateOne({ _id: p._id, 'poll.options.votes': { $ne: req.me._id } }, { $addToSet: { [`poll.options.${i}.votes`]: req.me._id } });
+  if (!r.modifiedCount) return res.status(400).json({ error: 'You already voted' });
+  res.json(shape(await pop(Post.findById(p.id)), req.me));
+});
+
+// scheduled posts stay hidden (see `visible()`) until their time; these let the author manage them
+app.get('/api/scheduled', auth, async (req, res) => {
+  const ps = await Post.find({ author: req.me._id, scheduled: true, visibleAt: { $gt: new Date() } }).sort('visibleAt').limit(100);
+  res.json(ps.map((p) => ({ id: p.id, text: p.text, at: p.visibleAt })));
+});
+app.post('/api/posts/:id/publish', auth, async (req, res) => {
+  const p = await Post.findOne({ _id: req.params.id, author: req.me._id, scheduled: true, visibleAt: { $gt: new Date() } });
+  if (!p) return res.sendStatus(404);
+  await Post.collection.updateOne({ _id: p._id }, { $set: { createdAt: new Date(), scheduled: false }, $unset: { visibleAt: '' } }); // createdAt is immutable in Mongoose, so go native
+  await Notif.updateMany({ post: p._id }, { $unset: { visibleAt: 1 } });
+  res.json({ ok: true });
+});
+
+// drafts (text only)
+app.get('/api/drafts', auth, async (req, res) => res.json((await Draft.find({ user: req.me._id }).sort('-updatedAt').limit(50)).map((d) => ({ id: d.id, text: d.text, at: d.updatedAt }))));
+app.post('/api/drafts', auth, async (req, res) => {
+  const text = String(req.body.text || '').trim().slice(0, 280);
+  if (!text) return res.status(400).json({ error: 'Nothing to save' });
+  if ((await Draft.countDocuments({ user: req.me._id })) >= 50) return res.status(400).json({ error: 'You can keep up to 50 drafts' });
+  res.json({ id: (await Draft.create({ user: req.me._id, text })).id });
+});
+app.put('/api/drafts/:id', auth, async (req, res) => { await Draft.updateOne({ _id: req.params.id, user: req.me._id }, { text: String(req.body.text || '').trim().slice(0, 280) }); res.json({ ok: true }); });
+app.delete('/api/drafts/:id', auth, async (req, res) => { await Draft.deleteOne({ _id: req.params.id, user: req.me._id }); res.json({ ok: true }); });
+
+// @mention autocomplete: accounts you follow first
+app.get('/api/mentions', async (req, res) => {
+  const q = String(req.query.q || '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 15);
+  if (!q) return res.json([]);
+  const hidden = await hiddenFor(req.me), fol = req.me?.following || [];
+  const us = await User.find({ username: new RegExp('^' + q), _id: { $nin: hidden }, ghost: { $ne: true } }).limit(20);
+  us.sort((a, b) => has(fol, b.id) - has(fol, a.id));
+  res.json(us.slice(0, 5).map(pub));
 });
 
 app.post('/api/posts/:id/like', auth, async (req, res) => {
@@ -200,14 +296,14 @@ app.delete('/api/posts/:id', auth, async (req, res) => {
   await Post.updateMany({ quoteOf: p._id }, { quoteDeleted: true });
   if (p.parent) await Post.updateOne({ _id: p.parent }, { $inc: { replies: -1 } });
   if (p.quoteOf) await Post.updateOne({ _id: p.quoteOf }, { $inc: { quotes: -1 } });
-  if (p.media?.fileId) await fetch(`${PF}/files/${p.media.fileId}`, { method: 'DELETE', headers: pfH }).catch(() => {});
+  for (const im of p.images?.length ? p.images : [p.media]) if (im?.fileId) pfDelete(im.fileId);
   res.json({ ok: true });
 });
 
 app.get('/api/users/:u', async (req, res) => {
   const u = await User.findOne({ username: req.params.u.toLowerCase() });
   if (!u) return res.sendStatus(404);
-  const [followers, posts] = await Promise.all([User.countDocuments({ following: u._id }), Post.countDocuments({ author: u._id, parent: null, repostOf: null })]);
+  const [followers, posts] = await Promise.all([User.countDocuments({ following: u._id }), Post.countDocuments({ author: u._id, parent: null, repostOf: null, ...visible() })]);
   res.json({ ...pub(u), joined: u.createdAt, following: u.following.length, followers: followers + fakeVal(u.fake), posts, isFollowing: !!req.me && has(req.me.following, u.id),
     blocked: !!req.me && has(req.me.blocked, u.id), muted: !!req.me && has(req.me.muted, u.id), blockedBy: !!req.me && has(u.blocked, req.me.id) });
 });
@@ -249,10 +345,10 @@ app.post('/api/posts/:id/pin', auth, async (req, res) => {
 });
 
 // ---- notifications ----
-const notifQuery = async (me) => ({ to: me._id, from: { $nin: await hiddenFor(me) } });
+const notifQuery = async (me) => ({ to: me._id, from: { $nin: await hiddenFor(me) }, ...visible() });
 app.get('/api/notifications', auth, async (req, res) => {
   const ns = await Notif.find(await notifQuery(req.me)).sort('-createdAt').limit(60).populate('from').populate('post');
-  res.json(ns.filter((n) => n.from).map((n) => ({ id: n.id, type: n.type, read: n.read, at: n.createdAt, from: pub(n.from), post: n.post ? { id: n.post.id, text: n.post.text, media: !!n.post.media?.url } : null })));
+  res.json(ns.filter((n) => n.from).map((n) => ({ id: n.id, type: n.type, read: n.read, at: n.visibleAt || n.createdAt, from: pub(n.from), post: n.post ? { id: n.post.id, text: n.post.text, media: !!n.post.media?.url } : null })));
 });
 app.get('/api/notifications/count', auth, async (req, res) => res.json({ unread: await Notif.countDocuments({ ...(await notifQuery(req.me)), read: false }) }));
 app.post('/api/notifications/read', auth, async (req, res) => { await Notif.updateMany({ to: req.me._id, read: false }, { read: true }); res.json({ ok: true }); });
@@ -262,7 +358,7 @@ app.get('/api/suggest', async (req, res) => {
 });
 
 app.get('/api/trends', async (_req, res) => {
-  const ps = await Post.find({ createdAt: { $gt: new Date(Date.now() - 7 * 864e5) }, repostOf: null }).select('text').limit(500);
+  const ps = await Post.find({ createdAt: { $gt: new Date(Date.now() - 7 * 864e5) }, repostOf: null, ...visible() }).select('text').limit(500);
   const c = {};
   ps.forEach((p) => new Set(p.text.toLowerCase().match(/#\w+/g) || []).forEach((t) => (c[t.slice(1)] = (c[t.slice(1)] || 0) + 1)));
   res.json(Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([tag, count]) => ({ tag, count })));
@@ -272,9 +368,52 @@ app.get('/api/search', async (req, res) => {
   if (!q) return res.json({ users: [], posts: [] });
   const r = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
   const hidden = await hiddenFor(req.me);
-  const [us, ps] = await Promise.all([User.find({ $or: [{ username: r }, { name: r }], _id: { $nin: hidden }, ghost: { $ne: true } }).limit(5), pop(Post.find({ text: r, repostOf: null, author: { $nin: hidden }, ...visible }).sort('-createdAt').limit(20))]);
+  const [us, ps] = await Promise.all([User.find({ $or: [{ username: r }, { name: r }], _id: { $nin: hidden }, ghost: { $ne: true } }).limit(5), pop(Post.find({ text: r, repostOf: null, author: { $nin: hidden }, ...visible() }).sort('-createdAt').limit(20))]);
   res.json({ users: us.map((u) => ({ ...pub(u), isFollowing: !!req.me && has(req.me.following, u.id) })), posts: ps.map((p) => shape(p, req.me)) });
 });
+
+const pfDelete = (id) => fetch(`${PF}/files/${id}`, { method: 'DELETE', headers: pfH }).catch(() => {});
+
+// ---- link previews (server-side, SSRF-safe: public hosts only, redirects re-checked, size/time capped) ----
+const isPrivateIp = (ip) => {
+  if (net.isIPv6(ip)) {
+    const l = ip.toLowerCase();
+    if (l === '::1' || l === '::' || /^f[cd]/.test(l) || /^fe[89ab]/.test(l)) return true;
+    const m = l.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    return m ? isPrivateIp(m[1]) : false;
+  }
+  const [a, b] = ip.split('.').map(Number);
+  return a === 10 || a === 127 || a === 0 || a >= 224 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
+};
+async function safeGet(url, hops = 0) {
+  const u = new URL(url);
+  if (!/^https?:$/.test(u.protocol) || (u.port && !['80', '443'].includes(u.port))) throw new Error('bad url');
+  const host = u.hostname.replace(/^\[|\]$/g, '');
+  const addrs = net.isIP(host) ? [{ address: host }] : await dns.lookup(host, { all: true });
+  if (!addrs.length || addrs.some((x) => isPrivateIp(x.address))) throw new Error('blocked');
+  const r = await fetch(u, { redirect: 'manual', signal: AbortSignal.timeout(2500), headers: { 'user-agent': 'UnviaBot/1.0 (link preview)', accept: 'text/html' } });
+  const loc = r.headers.get('location');
+  if (r.status >= 300 && r.status < 400 && loc && hops < 3) return safeGet(new URL(loc, u).href, hops + 1);
+  return { r, url: u.href };
+}
+async function fetchPreview(url) {
+  const { r, url: finalUrl } = await safeGet(url);
+  if (!r.ok || !r.body || !(r.headers.get('content-type') || '').includes('text/html')) return undefined;
+  const reader = r.body.getReader(), dec = new TextDecoder(); let html = '', size = 0;
+  while (size < 300000) { const { done, value } = await reader.read(); if (done) break; size += value.length; html += dec.decode(value, { stream: true }); if (/<\/head>/i.test(html)) break; }
+  reader.cancel().catch(() => {});
+  const ent = (t) => (t || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+  const meta = (k) => { const t = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${k}["'][^>]*>`, 'i')); const c = t && t[0].match(/content=["']([^"']*)["']/i); return c ? ent(c[1]) : ''; };
+  const title = meta('og:title') || meta('twitter:title') || ent((html.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1]);
+  if (!title) return undefined;
+  let image = meta('og:image') || meta('twitter:image');
+  try { image = image ? new URL(image, finalUrl).href : ''; if (!/^https?:/.test(image)) image = ''; } catch { image = ''; }
+  return { url, title: title.slice(0, 120), description: (meta('og:description') || meta('description')).slice(0, 200), image, site: (meta('og:site_name') || new URL(finalUrl).hostname.replace(/^www\./, '')).slice(0, 60) };
+}
+async function linkPreview(text) {
+  const m = (text || '').match(/https?:\/\/[^\s<>"']+/i); if (!m) return undefined;
+  try { return await Promise.race([fetchPreview(m[0].replace(/[.,!?;:)\]]+$/, '')), new Promise((r) => setTimeout(() => r(undefined), 3500))]); } catch { return undefined; }
+}
 
 async function pfUpload(f) {
   const form = new FormData();
@@ -408,7 +547,8 @@ app.post('/api/admin/fake/stop', adm, async (req, res) => {
 app.use(express.static(path.join(__dirname, 'public')));
 app.use((e, _q, res, _n) => {
   console.error(e);
-  if (e.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'Image must be under 4 MB' });
+  if (e.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'Each image must be under 4 MB' });
+  if (e.code === 'LIMIT_UNEXPECTED_FILE') return res.status(400).json({ error: 'You can add up to 4 images' });
   res.status(500).json({ error: 'Server error' });
 });
 if (require.main === module) app.listen(process.env.PORT || 3000, () => console.log('http://localhost:3000'));

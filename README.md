@@ -7,7 +7,7 @@ Created by **Alireza Asakareh (RealUnfazed)** · [MIT License](LICENSE)
 ## Features
 
 - **Timeline:** For you / Following feeds, infinite scroll, replies and threads, reposts and quote posts, likes, bookmarks, @mentions and #hashtags
-- **Posting:** text (280 chars), image upload and a GIF picker (GIPHY)
+- **Posting:** text (280 chars), up to 4 photos per post (compressed in the browser first), GIF picker (GIPHY), polls, emoji picker, @mention autocomplete, link preview cards, edit within 60 minutes, reply controls (everyone / accounts you follow / only mentioned), drafts and scheduled posts
 - **Profiles:** photo, banner, bio, Posts / Replies / Media / Likes tabs, pinned post, followers and following lists, Follow / Unfollow
 - **Notifications:** likes, reposts, quotes, replies, mentions and follows, with a live unread badge
 - **Block & mute:** hide people from your feeds, search and notifications; blocking also removes follows both ways
@@ -62,7 +62,9 @@ capacitor.config.json  Mobile shell
 
 ## Notes
 
-- PostFile's free tier has monthly upload limits; text-only posts don't use any.
+- PostFile's free tier has monthly upload limits; text-only posts don't use any, and a post with 4 photos uses 4 uploads.
+- Scheduled posts are hidden by a time check on every read, so no background job or cron is needed. Drafts save text only (not photos or polls).
+- Link previews are fetched server-side when a post is created. Only public hosts on ports 80/443 are fetched, redirects are re-checked, and size and time are capped.
 - Uploads are capped at 4 MB each (Vercel's request body limit is about 4.5 MB).
 - Tailwind loads from its CDN for simplicity; switch to the Tailwind CLI for production builds.
 
@@ -71,8 +73,8 @@ capacitor.config.json  Mobile shell
 | Phase | Scope | Status |
 | --- | --- | --- |
 | 1. Social core | Notifications, profile tabs, followers/following lists, block & mute, pinned post | Done |
-| 2. Rich posting | Multi-image posts (up to 4), polls, edit post, emoji picker, @mention autocomplete, drafts and scheduled posts, reply controls, link previews | Next |
-| 3. Messaging | Direct messages (1:1 and group), read receipts, message requests | Planned |
+| 2. Rich posting | Multi-image posts (up to 4), polls, edit post, emoji picker, @mention autocomplete, drafts and scheduled posts, reply controls, link previews | Done |
+| 3. Messaging | Direct messages (1:1 and group), read receipts, message requests | Next |
 | 4. Accounts & safety | Password reset, email verification, protected accounts, 2FA, dim/light themes, muted words, profile extras (location, website, birthday) | Planned |
 | 5. Platform | Lists, Explore and topics, post analytics, Community Notes, communities, bookmark folders | Planned |
 | 6. Production | Rate limiting, Tailwind build (no CDN), moderation tools, push notifications for mobile | Planned |
