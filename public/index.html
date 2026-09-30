@@ -29,6 +29,8 @@ aside{scrollbar-width:none}
 .flash{animation:flash .8s ease}
 .cnt{display:inline-block;font-variant-numeric:tabular-nums}
 @keyframes grow{from{width:0}}.bar{animation:grow .8s cubic-bezier(.2,.8,.2,1)}
+.in-dm button.fixed{display:none}
+.dmfoot{position:sticky;bottom:calc(2.85rem + env(safe-area-inset-bottom))}@media (min-width:640px){.dmfoot{bottom:0}}
 </style>
 </head>
 <body class="min-h-screen bg-black text-zinc-100 antialiased" style="padding-top:env(safe-area-inset-top)">
@@ -45,7 +47,7 @@ aside{scrollbar-width:none}
     <div id="trend"></div><div id="sug"></div>
     <p class="px-4 pb-6 text-xs leading-5 text-zinc-600">Terms of Service · Privacy Policy · Cookie Policy · Accessibility · © 2026 Unvia</p></div></aside>
 </div>
-<nav id="tabs" class="fixed inset-x-0 bottom-0 z-20 flex justify-around border-t border-zinc-800 bg-black/90 backdrop-blur sm:hidden" style="padding-bottom:env(safe-area-inset-bottom)"></nav>
+<nav id="tabs" class="fixed inset-x-0 bottom-0 z-20 flex justify-around overflow-x-auto border-t border-zinc-800 bg-black/90 backdrop-blur sm:hidden" style="padding-bottom:env(safe-area-inset-bottom)"></nav>
 <button data-compose class="fixed right-4 z-20 grid h-14 w-14 place-items-center rounded-full bg-sky-500 text-2xl text-white shadow-lg sm:hidden" style="bottom:calc(4.5rem + env(safe-area-inset-bottom))">＋</button>
 <svg width="0" height="0" class="absolute"><defs><linearGradient id="og" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f9d423"/><stop offset=".5" stop-color="#ff4e50"/><stop offset="1" stop-color="#a855f7"/></linearGradient></defs></svg>
 <dialog id="gd" class="m-auto w-[min(92vw,480px)] rounded-2xl border border-zinc-800 bg-black p-0 text-zinc-100 backdrop:bg-zinc-500/40"><div class="p-3"><input id="gq" placeholder="Search GIFs" class="w-full rounded-full bg-zinc-900 px-4 py-2 outline-none focus:ring-1 focus:ring-sky-500"></div><div id="gg" class="max-h-[60vh] columns-2 gap-2 overflow-y-auto p-3 pt-0"></div></dialog>
@@ -78,7 +80,7 @@ function fmt(n) {
   }
   return neg + abs.toLocaleString('en-US');
 }
-let token = localStorage.token, me = JSON.parse(localStorage.me || 'null'), tab = 'all', reg = false, cur, poll, unread = 0;
+let token = localStorage.token, me = JSON.parse(localStorage.me || 'null'), tab = 'all', reg = false, cur, poll, unread = 0, dmUnread = 0;
 const pages = {};
 // Smoothly counts from the last displayed value to `n`, formatting at every frame — always a real number mid-flight, never a mismatched unit like a stray "K" flashing before an "M".
 function animateCount(el, n) {
@@ -96,7 +98,7 @@ function animateCount(el, n) {
   el._raf = requestAnimationFrame(step);
 }
 
-const I = { reply: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z', repost: 'M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3', heart: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z', mark: 'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z', home: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10', user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', back: 'M19 12H5M12 19l-7-7 7-7', bell: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0', pin: 'M12 17v5M9 3h6l-1 7 3 3v2H7v-2l3-3z', more: 'M5 12h.01M12 12h.01M19 12h.01', sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6', shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3', trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6' };
+const I = { reply: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z', repost: 'M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3', heart: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z', mark: 'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z', home: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10', user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', back: 'M19 12H5M12 19l-7-7 7-7', bell: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0', pin: 'M12 17v5M9 3h6l-1 7 3 3v2H7v-2l3-3z', mail: 'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6', edit: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z', send: 'M22 2L11 13M22 2l-7 20-4-9-9-4z', image: 'M3 3h18v18H3zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 21', more: 'M5 12h.01M12 12h.01M19 12h.01', sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6', shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3', trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6' };
 const ic = (n, c = '', fill = false) => `<svg viewBox="0 0 24 24" class="h-[18px] w-[18px] ${c}" fill="${fill ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${I[n]}"/></svg>`;
 
 async function api(path, o = {}) {
@@ -380,7 +382,7 @@ const PT = [['user', 'Posts'], ['replies', 'Replies'], ['media', 'Media'], ['lik
 const PE = { user: 'No posts yet.', replies: 'No replies yet.', media: 'No photos or GIFs yet.', likes: 'Posts you like will show up here.' };
 const ptabs = (uid, on) => `<div class="flex border-b border-zinc-800">${PT.filter(([k]) => k !== 'likes' || me?.id === uid).map(([k, l]) => `<button data-ptab="${k}" class="relative flex-1 py-4 text-[15px] hover:bg-zinc-900 ${on === k ? 'font-bold' : 'text-zinc-500'}">${l}${on === k ? '<i class="absolute bottom-0 left-1/2 h-1 w-12 -translate-x-1/2 rounded-full bg-sky-500"></i>' : ''}</button>`).join('')}</div>`;
 const ctl = (u) => me?.id === u.id ? '<button data-edit class="rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Edit profile</button>'
-  : `<div class="flex gap-2"><button data-repuser="${u.id}" data-un="${esc(u.username)}" data-muted="${u.muted ? 1 : 0}" data-blocked="${u.blocked ? 1 : 0}" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('more')}</button>${u.blockedBy ? '' : u.blocked ? `<button data-block="${esc(u.username)}" class="rounded-full bg-red-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-red-500">Blocked</button>` : fbtn(u.username, u.isFollowing)}</div>`;
+  : `<div class="flex gap-2">${u.blockedBy || u.blocked ? '' : `<button data-dm="${esc(u.username)}" aria-label="Message" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('mail')}</button>`}<button data-repuser="${u.id}" data-un="${esc(u.username)}" data-muted="${u.muted ? 1 : 0}" data-blocked="${u.blocked ? 1 : 0}" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('more')}</button>${u.blockedBy ? '' : u.blocked ? `<button data-block="${esc(u.username)}" class="rounded-full bg-red-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-red-500">Blocked</button>` : fbtn(u.username, u.isFollowing)}</div>`;
 
 async function profile(v, name, pg) {
   let u; try { u = await api('/users/' + name); } catch { return (v.innerHTML = head('Profile') + '<p class="p-10 text-center text-zinc-500">This account doesn’t exist.</p>'); }
@@ -438,6 +440,110 @@ async function notifications(v, pg) {
   };
   await load(); pg.refresh = load;
 }
+// ---------- Direct messages ----------
+const cav = (c, cls = 'h-12 w-12 text-lg') => (c.group ? `<span class="${cls} grid shrink-0 place-items-center rounded-full bg-zinc-800">👥</span>` : dot(c.others[0] || {}, cls));
+const crow = (c) => `<div data-clink="${c.id}" class="flex cursor-pointer gap-3 border-b border-zinc-800 px-4 py-3 transition-colors hover:bg-white/[.03]">${cav(c)}<div class="min-w-0 flex-1"><div class="flex items-baseline gap-1"><b class="truncate">${esc(c.name)}</b>${c.group ? '' : bdg(c.others[0])}<span class="shrink-0 truncate text-sm text-zinc-500">${c.group ? '' : '@' + esc(c.others[0]?.username) + ' · '}${ago(c.lastAt)}</span></div><p class="truncate text-[15px] ${c.unread ? 'font-bold text-zinc-100' : 'text-zinc-500'}">${c.lastFromMe ? 'You: ' : ''}${esc(c.lastText)}</p></div>${c.unread ? '<i class="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-sky-500"></i>' : ''}</div>`;
+async function messages(v, pg) {
+  if (!me) return void (v.innerHTML = head('Messages', '', false) + guest());
+  let box = 'inbox', sig = null, reqN = 0;
+  v.innerHTML = `<div class="sticky top-0 z-10 bg-black/80 backdrop-blur"><div class="flex items-center justify-between px-4 py-2"><h1 class="text-xl font-bold">Messages</h1><button data-newdm aria-label="New message" class="rounded-full p-2 hover:bg-zinc-900">${ic('edit', '!h-5 !w-5')}</button></div><div class="dmtabs flex border-b border-zinc-800"></div></div><div class="cl">${skel}</div>`;
+  const tabs = () => { v.querySelector('.dmtabs').innerHTML = [['inbox', 'Messages'], ['requests', 'Requests' + (reqN ? ` (${reqN})` : '')]].map(([k, l]) => `<button data-dmbox="${k}" class="relative flex-1 py-3 text-[15px] hover:bg-zinc-900 ${box === k ? 'font-bold' : 'text-zinc-500'}">${l}${box === k ? '<i class="absolute bottom-0 left-1/2 h-1 w-12 -translate-x-1/2 rounded-full bg-sky-500"></i>' : ''}</button>`).join(''); };
+  const load = async (force) => {
+    try {
+      const [cs, u] = await Promise.all([api('/conversations?box=' + box), api('/messages/unread')]); reqN = u.requests;
+      const nsig = box + reqN + JSON.stringify(cs.map((c) => [c.id, c.lastAt, c.unread, c.name]));
+      if (nsig === sig && !force) return; sig = nsig; tabs();
+      v.querySelector('.cl').innerHTML = cs.length ? cs.map(crow).join('') : `<p class="p-10 text-center text-zinc-500">${box === 'requests' ? 'No message requests.' : 'No messages yet. Tap the pencil to start a conversation.'}</p>`;
+    } catch (x) { v.querySelector('.cl').innerHTML = `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
+  };
+  v._setBox = (bx) => { box = bx; sig = null; v.querySelector('.cl').innerHTML = skel; load(true); };
+  tabs(); await load(true); pg.refresh = () => load(false);
+}
+
+const hm = (t) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+const dayLbl = (t) => new Date(t).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+const mrow = (m, i, a, c) => {
+  const mine = m.from === me.id, prev = a[i - 1], next = a[i + 1], gap = (x, y) => Math.abs(new Date(x.at) - new Date(y.at)) > 5 * 60000;
+  const first = !prev || prev.from !== m.from || gap(prev, m), last = !next || next.from !== m.from || gap(m, next), who = c.members.find((u) => u.id === m.from);
+  const sep = !prev || new Date(prev.at).toDateString() !== new Date(m.at).toDateString() ? `<div class="mt-4 text-center text-xs text-zinc-600">${dayLbl(m.at)}</div>` : '';
+  const bub = m.deleted ? '<span class="italic text-zinc-500">This message was deleted</span>' : `${m.image ? `<button type="button" data-img="${esc(m.image)}" class="block"><img src="${esc(m.image)}" loading="lazy" class="max-h-64 max-w-full rounded-xl object-cover"></button>` : ''}${m.text ? `<div class="whitespace-pre-wrap break-words ${m.image ? 'mt-1' : ''}">${linkify(m.text)}</div>` : ''}`;
+  return `${sep}<div class="msg flex items-end gap-2 ${mine ? 'justify-end' : ''} ${first ? 'mt-3' : 'mt-0.5'} ${m.pending ? 'opacity-60' : ''}">${!mine && c.group ? (last ? dot(who || {}, 'h-7 w-7 text-xs') : '<span class="w-7 shrink-0"></span>') : ''}<div class="flex max-w-[78%] flex-col ${mine ? 'items-end' : 'items-start'}">${!mine && c.group && first ? `<span class="mb-0.5 text-xs text-zinc-500">${esc(who?.name)}</span>` : ''}<div data-mbub="${m.id}" class="rounded-2xl px-3 py-2 text-[15px] ${m.deleted ? 'border border-zinc-800' : mine ? 'rounded-br-md bg-sky-600 text-white' : 'rounded-bl-md bg-zinc-800'} ${m.failed ? 'ring-1 ring-red-500' : ''}">${bub}</div>${mine && !m.deleted && !m.pending && !m.failed ? `<div class="macts mt-1 hidden text-xs"><button data-mdel="${m.id}" class="text-red-400 hover:text-red-300">Delete</button></div>` : ''}${last ? `<span class="mt-0.5 text-[11px] text-zinc-600">${m.failed ? 'Not sent' : hm(m.at)}</span>` : ''}</div></div>`;
+};
+async function chat(v, id, pg) {
+  pg.fast = 2500;
+  v.innerHTML = `<div class="sticky top-0 z-10 flex items-center gap-3 bg-black/80 px-3 py-2 backdrop-blur"><button data-back class="rounded-full p-2 hover:bg-zinc-900">${ic('back')}</button><div class="chh flex min-w-0 flex-1 items-center gap-3"></div><button data-cmenu aria-label="Conversation menu" class="rounded-full p-2 hover:bg-zinc-900">${ic('more')}</button></div><div class="ml px-3 pb-3">${skel}</div><div class="seen px-4 pb-2 text-right text-xs text-zinc-500"></div><div class="dmfoot border-t border-zinc-800 bg-black"></div>`;
+  const st = (v._chat = { id, conv: null, msgs: [], reads: [], more: false, sending: 0, sig: '' }), ml = v.querySelector('.ml');
+  const nearBottom = () => innerHeight + scrollY >= document.body.scrollHeight - 160, toBottom = () => scrollTo(0, document.body.scrollHeight);
+  const seenTxt = () => { // read receipt under your latest message, only if it is the last one in the chat
+    const real = st.msgs.filter((m) => !m.pending && !m.failed), last = real.at(-1);
+    if (!last || last.from !== me.id || last.deleted) return '';
+    const n = st.reads.filter((r) => r.u !== me.id && new Date(r.at) >= new Date(last.at)).length;
+    return st.conv.group ? (n ? `Seen by ${n}` : 'Sent') : n ? 'Seen' : 'Sent';
+  };
+  const sigOf = () => JSON.stringify([st.msgs.map((m) => m.id + m.deleted + m.failed + m.pending), st.conv && seenTxt(), st.conv?.request, st.conv?.pending, st.more]);
+  st.render = (stick) => {
+    const c = st.conv, bottom = stick ?? nearBottom();
+    ml.innerHTML = (st.more ? '<div class="py-2 text-center"><button data-dmmore class="text-sm font-semibold text-sky-500 hover:text-sky-400">Load earlier messages</button></div>' : '') + (st.msgs.length ? st.msgs.map((m, i) => mrow(m, i, st.msgs, c)).join('') : `<p class="p-10 text-center text-zinc-500">${c.pending || c.request ? '' : 'Say hello 👋'}</p>`);
+    v.querySelector('.seen').textContent = seenTxt(); st.sig = sigOf(); if (bottom) toBottom();
+  };
+  st.footer = () => {
+    const c = st.conv, f = v.querySelector('.dmfoot');
+    if (c.request) return void (f.innerHTML = `<div class="p-4 text-center"><p class="mb-3 text-sm text-zinc-400">${esc(c.name)} wants to message you. They won’t see that you’ve read this until you accept.</p><div class="flex justify-center gap-3"><button data-dmacc class="rounded-full bg-sky-500 px-5 py-2 font-bold text-white hover:bg-sky-400">Accept</button><button data-dmdec class="rounded-full border border-zinc-600 px-5 py-2 font-bold hover:bg-zinc-900">Delete</button></div></div>`);
+    if (f.querySelector('form')) return void (f.querySelector('.note').textContent = c.pending ? 'Message request sent. You can send up to 3 messages until they accept.' : '');
+    f.innerHTML = `<div class="note px-4 pt-2 text-center text-xs text-zinc-500">${c.pending ? 'Message request sent. You can send up to 3 messages until they accept.' : ''}</div><div class="pvw hidden px-3 pt-2"></div><form class="dmf flex items-end gap-2 p-3"><label class="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-full text-sky-500 hover:bg-zinc-900" aria-label="Add photo">${ic('image', '!h-5 !w-5')}<input type="file" accept="image/*" class="dmfile hidden"></label><textarea class="dmta max-h-32 min-h-[40px] flex-1 resize-none rounded-2xl bg-zinc-900 px-4 py-2 outline-none placeholder:text-zinc-500" rows="1" maxlength="1000" placeholder="Start a new message"></textarea><button aria-label="Send" class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-sky-500 text-white hover:bg-sky-400 disabled:opacity-50">${ic('send', '!h-5 !w-5')}</button></form>`;
+  };
+  const header = () => {
+    const c = st.conv, o = c.others[0] || {};
+    v.querySelector('.chh').innerHTML = c.group ? `<span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-zinc-800">👥</span><div class="min-w-0 leading-tight"><div class="truncate font-bold">${esc(c.name)}</div><div class="text-xs text-zinc-500">${c.members.length} members</div></div>` : `${dot(o, 'h-9 w-9 text-sm')}<a href="#/u/${esc(o.username)}" class="min-w-0 leading-tight"><div class="truncate font-bold hover:underline">${esc(c.name)}${bdg(o)}</div><div class="truncate text-xs text-zinc-500">@${esc(o.username)}</div></a>`;
+  };
+  const fetchWin = (extra = '') => api(`/conversations/${id}?read=${document.hidden ? 0 : 1}${extra}`);
+  const apply = (d, first) => { // server window replaces the tail; older loaded messages and unsent ones are kept
+    st.conv = d.conv; st.reads = d.reads;
+    const f0 = d.messages[0]?.at, older = st.msgs.filter((m) => !m.pending && !m.failed && f0 && m.at < f0), unsent = st.msgs.filter((m) => m.pending || m.failed);
+    st.msgs = [...older, ...d.messages, ...unsent]; if (first) st.more = d.more;
+  };
+  v._loadMore = async () => {
+    const oldest = st.msgs.find((m) => !m.pending && !m.failed); if (!oldest) return;
+    try { const d = await api(`/conversations/${id}?before=${encodeURIComponent(oldest.at)}`), h0 = document.body.scrollHeight; st.msgs = [...d.messages, ...st.msgs]; st.more = d.more; st.render(false); scrollTo(0, scrollY + document.body.scrollHeight - h0); } catch (x) { toast(x.message, 1); }
+  };
+  pg.onShow = () => { if (st.conv) toBottom(); };
+  try { const d = await fetchWin(); apply(d, true); header(); st.footer(); st.render(true); if (d.conv.unread) pollUnread(); }
+  catch { ml.innerHTML = '<p class="p-10 text-center text-zinc-500">This conversation isn’t available.</p>'; return; }
+  pg.refresh = async () => {
+    if (st.sending) return;
+    try {
+      const d = await fetchWin(), was = st.sig; apply(d); st.footer();
+      if (sigOf() !== was) st.render(); if (d.conv.unread) pollUnread();
+    } catch {}
+  };
+}
+async function sendDm(f) {
+  const v = f.closest('.pg'), st = v._chat, ta = f.querySelector('textarea'), text = ta.value.trim(), file = f._file;
+  if (!text && !file) return;
+  const tmp = { id: 'tmp' + Date.now(), from: me.id, text, image: file ? URL.createObjectURL(file) : null, at: new Date().toISOString(), pending: true };
+  st.msgs.push(tmp); ta.value = ''; ta.style.height = ''; f._file = null; const pv = v.querySelector('.pvw'); pv.classList.add('hidden'); pv.innerHTML = ''; st.render(true);
+  const fd = new FormData(); fd.append('text', text); if (file) fd.append('image', file);
+  st.sending++;
+  try {
+    const m = await api(`/conversations/${st.id}/messages`, { method: 'POST', body: fd });
+    st.msgs = st.msgs.filter((x) => x.id !== tmp.id && x.id !== m.id); st.msgs.push(m);
+    if (st.conv.request) { st.conv.request = false; st.footer(); } // replying to a request accepts it
+    st.render(true);
+  } catch (x) { tmp.pending = false; tmp.failed = true; st.render(true); toast(x.message, 1); if (!ta.value) ta.value = text; }
+  finally { st.sending--; }
+}
+let NM = [], nmT;
+function openNewDm() {
+  NM = [];
+  openDlg(`<div class="space-y-3 p-4"><h2 class="text-xl font-extrabold">New message</h2><input class="nmq ${inp}" placeholder="Search people by username" autocomplete="off" autocapitalize="none"><div class="nmsel flex flex-wrap gap-2"></div><div class="nmres max-h-60 overflow-y-auto"></div><input class="nmname hidden ${inp}" maxlength="50" placeholder="Group name (optional)"><p class="err text-sm text-red-400"></p><button data-nmgo disabled class="w-full rounded-full bg-sky-500 py-2.5 font-bold text-white disabled:opacity-50">Chat</button></div>`);
+  setTimeout(() => dlg.querySelector('.nmq')?.focus(), 60);
+}
+const nmDraw = () => {
+  dlg.querySelector('.nmsel').innerHTML = NM.map((u) => `<button type="button" data-nmrm="${esc(u.username)}" class="rounded-full bg-sky-500/20 px-3 py-1 text-sm hover:bg-sky-500/30">${esc(u.name)} ✕</button>`).join('');
+  dlg.querySelector('.nmname').classList.toggle('hidden', NM.length < 2);
+  const go = dlg.querySelector('[data-nmgo]'); go.disabled = !NM.length; go.textContent = NM.length > 1 ? 'Create group' : 'Chat';
+};
+
 const DR = {};
 async function drafts(v, pg) {
   if (!me) return void (v.innerHTML = head('Drafts & scheduled') + guest());
@@ -454,9 +560,13 @@ async function drafts(v, pg) {
   };
   await load(); pg.refresh = load;
 }
+const badge = (h) => { const n = h === '#/notifications' ? unread : h === '#/messages' ? dmUnread : 0; return n ? `<i class="absolute -right-2 -top-2 grid min-w-[18px] place-items-center rounded-full bg-sky-500 px-1 text-[11px] font-bold not-italic leading-[18px] text-white">${n > 99 ? '99+' : n}</i>` : ''; };
 async function pollUnread() {
   if (!token) return;
-  try { const d = await api('/notifications/count'); if (d.unread !== unread) { unread = d.unread; chrome(); } } catch {}
+  try {
+    const [n, d] = await Promise.all([api('/notifications/count'), api('/messages/unread')]), dm = d.unread + d.requests;
+    if (n.unread !== unread || dm !== dmUnread) { unread = n.unread; dmUnread = dm; chrome(); }
+  } catch {}
 }
 
 async function thread(v, id, pg) {
@@ -488,6 +598,7 @@ function route() {
     const v = document.createElement('div'); v.className = 'pg'; $('#view').append(v); pg = pages[h] = { el: v, y: 0 };
     if (a === 'u') (c === 'followers' || c === 'following' ? people(v, b, c, pg) : profile(v, b, pg));
     else if (a === 'notifications') notifications(v, pg);
+    else if (a === 'messages') (b ? chat(v, b, pg) : messages(v, pg));
     else if (a === 'drafts') drafts(v, pg);
     else if (a === 'p') thread(v, b, pg);
     else if (a === 'settings') settings(v);
@@ -496,14 +607,14 @@ function route() {
     else if (a === 'bookmarks') { v.innerHTML = head('Bookmarks', '', false) + (me ? '<div class="f"></div>' : guest()); if (me) { const f = v.querySelector('.f'); feed(f, 'feed=bookmarks', 'Save posts to find them here later.'); pg.refresh = () => refreshVisible(f); } }
     else home(v, pg);
   }
-  pg.el.hidden = false; cur = h; scrollTo(0, pg.y);
-  clearInterval(poll); pg.refresh?.(); poll = setInterval(() => pages[cur]?.refresh?.(), 5000);
+  pg.el.hidden = false; cur = h; scrollTo(0, pg.y); pg.onShow?.(); document.body.classList.toggle('in-dm', a === 'messages');
+  clearInterval(poll); pg.refresh?.(); poll = setInterval(() => pages[cur]?.refresh?.(), pg.fast || 5000); // open chats poll faster
 }
 addEventListener('visibilitychange', () => !document.hidden && pages[cur]?.refresh?.());
 
 function chrome() {
-  const cur = location.hash || '#/', items = [['home', 'Home', '#/'], ['search', 'Search', '#/search'], ...(me ? [['bell', 'Notifications', '#/notifications']] : []), ['mark', 'Bookmarks', '#/bookmarks'], ['user', 'Profile', me ? '#/u/' + me.username : ''], ...(me ? [['sliders', 'Settings', '#/settings']] : []), ...(me?.admin ? [['shield', 'Admin', '#/admin']] : [])];
-  const link = ([i, t, h], big) => `<a href="${h || '#/'}" ${h ? '' : 'data-need'} class="${big ? 'flex items-center gap-4 p-3 text-xl' : 'p-4'} rounded-full hover:bg-zinc-900 ${cur === h ? 'font-bold' : 'text-zinc-400'}"><span class="relative">${ic(i, big ? '!h-7 !w-7' : '!h-6 !w-6')}${h === '#/notifications' && unread ? `<i class="absolute -right-2 -top-2 grid min-w-[18px] place-items-center rounded-full bg-sky-500 px-1 text-[11px] font-bold not-italic leading-[18px] text-white">${unread > 99 ? '99+' : unread}</i>` : ''}</span>${big ? `<span class="hidden xl:inline">${t}</span>` : ''}</a>`;
+  const cur = location.hash || '#/', items = [['home', 'Home', '#/'], ['search', 'Search', '#/search'], ...(me ? [['bell', 'Notifications', '#/notifications'], ['mail', 'Messages', '#/messages']] : []), ['mark', 'Bookmarks', '#/bookmarks'], ['user', 'Profile', me ? '#/u/' + me.username : ''], ...(me ? [['sliders', 'Settings', '#/settings']] : []), ...(me?.admin ? [['shield', 'Admin', '#/admin']] : [])];
+  const link = ([i, t, h], big) => `<a href="${h || '#/'}" ${h ? '' : 'data-need'} class="${big ? 'flex items-center gap-4 p-3 text-xl' : 'p-2.5'} rounded-full hover:bg-zinc-900 ${cur === h ? 'font-bold' : 'text-zinc-400'}"><span class="relative">${ic(i, big ? '!h-7 !w-7' : '!h-6 !w-6')}${badge(h)}</span>${big ? `<span class="hidden xl:inline">${t}</span>` : ''}</a>`;
   $('#nav').innerHTML = items.map((i) => link(i, 1)).join(''); $('#tabs').innerHTML = items.map((i) => link(i)).join('');
   $('#acct').innerHTML = me ? `<div class="flex items-center gap-3 rounded-full p-2 hover:bg-zinc-900">${av(me)}<div class="hidden min-w-0 flex-1 leading-tight xl:block"><div class="truncate font-bold">${esc(me.name)}</div><div class="truncate text-sm text-zinc-500">@${esc(me.username)}</div></div><button data-out class="hidden text-sm text-zinc-500 hover:text-white xl:block">Log out</button></div>` : '<button data-login class="rounded-full bg-sky-500 px-5 py-2 font-bold text-white">Log in</button>';
 }
@@ -550,6 +661,8 @@ async function submit(c) {
 
 document.addEventListener('click', async (e) => {
   const nl = e.target.closest('[data-nlink]'); if (nl && !e.target.closest('a,button')) return void (location.hash = nl.dataset.nlink);
+  const cl = e.target.closest('[data-clink]'); if (cl && !e.target.closest('a,button')) return void (location.hash = '#/messages/' + cl.dataset.clink);
+  const mb = e.target.closest('[data-mbub]'); if (mb && !e.target.closest('a,button')) return void mb.parentElement.querySelector('.macts')?.classList.toggle('hidden');
   const b = e.target.closest('button,a'), art = e.target.closest('article'), d = b?.dataset || {};
   if (e.target === dlg) return dlg.close();
   if (e.target === gd) return gd.close();
@@ -557,7 +670,36 @@ document.addEventListener('click', async (e) => {
     const gi = e.target.closest('img[data-gif]');
     if (gi) { gt.dataset.gif = gi.dataset.gif; (gt._files || []).forEach((f) => URL.revokeObjectURL(f.url)); gt._files = []; togglePoll(gt, false); renderPv(gt); return gd.close(); }
     if ('gifopen' in d) { gt = b.closest('.cmp'); gd.showModal(); return gifs(); }
+    if (dlg.open && b?.tagName === 'A' && dlg.contains(b)) dlg.close(); // links inside dialogs navigate and close them
     if (d.qlink) return void (location.hash = '#/p/' + d.qlink);
+    if ('newdm' in d) return openNewDm();
+    if (d.nmpick) { NM.push({ username: d.nmpick, name: d.nmname }); dlg.querySelector('.nmq').value = ''; dlg.querySelector('.nmres').innerHTML = ''; return nmDraw(); }
+    if (d.nmrm) { NM = NM.filter((u) => u.username !== d.nmrm); return nmDraw(); }
+    if ('nmgo' in d) {
+      const err = dlg.querySelector('.err'); err.textContent = ''; b.disabled = true;
+      try { const r = await api('/conversations', { method: 'POST', body: JSON.stringify({ usernames: NM.map((u) => u.username), name: dlg.querySelector('.nmname').value }) }); dlg.close(); location.hash = '#/messages/' + r.id; }
+      catch (x) { err.textContent = x.message; b.disabled = false; }
+      return;
+    }
+    if (d.dm) { if (!me) return openAuth(); const r = await api('/conversations', { method: 'POST', body: JSON.stringify({ username: d.dm }) }); return void (location.hash = '#/messages/' + r.id); }
+    if (d.dmbox) return b.closest('.pg')._setBox(d.dmbox);
+    if ('dmmore' in d) return b.closest('.pg')._loadMore();
+    if ('dmrm' in d) { const v = b.closest('.pg'); v.querySelector('.dmf')._file = null; const pv = v.querySelector('.pvw'); pv.classList.add('hidden'); pv.innerHTML = ''; return; }
+    if ('dmacc' in d) { const st = b.closest('.pg')._chat; await api(`/conversations/${st.id}/accept`, { method: 'POST' }); st.conv.request = false; st.footer(); st.render(false); return pollUnread(); }
+    if ('dmdec' in d) { const st = b.closest('.pg')._chat; await api(`/conversations/${st.id}/decline`, { method: 'POST' }); Object.keys(pages).filter((k) => k.startsWith('#/messages')).forEach(drop); location.hash = '#/messages'; toast('Request deleted'); return pollUnread(); }
+    if (d.mdel) { const st = b.closest('.pg')._chat; await api('/messages/' + d.mdel, { method: 'DELETE' }); const m = st.msgs.find((x) => x.id === d.mdel); if (m) { m.deleted = true; m.text = ''; m.image = null; } st.render(false); return toast('Message deleted'); }
+    if ('cmenu' in d) {
+      const c = pages[cur]._chat.conv;
+      return openDlg(`<div class="p-2">${c.group ? `<button data-cact="members" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900">Group members</button><button data-cact="rename" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900">Rename group</button><button data-cact="del" class="block w-full rounded-xl px-4 py-3 text-left font-semibold text-red-400 hover:bg-zinc-900">Leave group</button>` : `<a href="#/u/${esc(c.others[0]?.username)}" class="block w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-zinc-900">View profile</a><button data-cact="del" class="block w-full rounded-xl px-4 py-3 text-left font-semibold text-red-400 hover:bg-zinc-900">Delete conversation</button>`}</div>`);
+    }
+    if (d.cact) {
+      const st = pages[cur]._chat, c = st.conv;
+      if (d.cact === 'members') return openDlg(`<div class="p-2"><h2 class="px-4 py-2 text-xl font-extrabold">Members</h2>${c.members.map((u) => `<a href="#/u/${esc(u.username)}" class="flex items-center gap-3 rounded-xl px-4 py-2 hover:bg-zinc-900">${dot(u, 'h-9 w-9 text-sm')}<span class="min-w-0 truncate"><b>${esc(u.name)}</b>${bdg(u)} <span class="text-zinc-500">@${esc(u.username)}</span></span></a>`).join('')}</div>`);
+      if (d.cact === 'rename') return openDlg(`<form id="rnf" class="space-y-3 p-4"><h2 class="text-xl font-extrabold">Rename group</h2><input name="name" maxlength="50" value="${esc(c.name)}" class="${inp}"><p class="err text-sm text-red-400"></p><button class="w-full rounded-full bg-white py-2.5 font-bold text-black">Save</button></form>`);
+      if (!confirm(c.group ? 'Leave this group?' : 'Delete this conversation? It only clears it for you.')) return;
+      dlg.close(); await api('/conversations/' + st.id, { method: 'DELETE' });
+      Object.keys(pages).filter((k) => k.startsWith('#/messages')).forEach(drop); location.hash = '#/messages'; toast(c.group ? 'You left the group' : 'Conversation deleted'); return pollUnread();
+    }
     if (d.img) return openDlg(`<img src="${esc(d.img)}" class="max-h-[85vh] w-full object-contain">`);
     if (d.rmimg !== undefined) { const c = b.closest('.cmp'); if (d.rmimg === 'gif') delete c.dataset.gif; else { const [f] = c._files.splice(+d.rmimg, 1); URL.revokeObjectURL(f.url); } return renderPv(c); }
     if (d.vote !== undefined) {
@@ -639,8 +781,10 @@ document.addEventListener('click', async (e) => {
 });
 document.addEventListener('submit', async (e) => {
   e.preventDefault(); const f = e.target, body = JSON.stringify(Object.fromEntries(new FormData(f)));
+  if (f.classList.contains('dmf')) return void sendDm(f);
   try {
     if (f.id === 'af') { const d = await api('/auth/' + (reg ? 'register' : 'login'), { method: 'POST', body }); localStorage.token = d.token; localStorage.me = JSON.stringify(d.user); location.reload(); }
+    if (f.id === 'rnf') { await api('/conversations/' + pages[cur]._chat.id, { method: 'PATCH', body }); dlg.close(); Object.keys(pages).filter((k) => k.startsWith('#/messages')).forEach(drop); cur = null; route(); toast('Group renamed'); }
     if (f.id === 'edf') { const id = f.dataset.id, o = P[id], np = await api('/posts/' + id, { method: 'PATCH', body }); P[id] = { ...np, pinned: o.pinned, repostBy: o.repostBy }; dlg.close(); rerender(id); toast('Post updated'); }
     if (f.id === 'pf') { await api('/me/password', { method: 'POST', body }); f.reset(); toast('Password updated'); }
     if (f.id === 'ef') { me = (await api('/me', { method: 'PATCH', body: new FormData(f) })).user; localStorage.me = JSON.stringify(me); dlg.close(); chrome(); Object.keys(pages).forEach(drop); cur = null; route(); toast('Profile saved'); }
@@ -694,6 +838,30 @@ document.addEventListener('change', async (e) => {
 document.addEventListener('change', (e) => { const s = e.target.closest('[data-badge]'); if (s) api('/admin/users/' + s.closest('[data-uid]').dataset.uid, { method: 'POST', body: JSON.stringify({ badge: s.value }) }).then(() => toast('Badge updated')).catch((x) => toast(x.message, 1)); });
 let gtm; document.addEventListener('input', (e) => { if (e.target.id === 'gq') { clearTimeout(gtm); gtm = setTimeout(() => gifs(e.target.value), 400); } });
 document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.target.id === 'sq' || e.target.classList.contains('sq')) && e.target.value.trim()) location.hash = '#/search/' + encodeURIComponent(e.target.value.trim()); });
+document.addEventListener('keydown', (e) => { // Enter sends a message on desktop; Shift+Enter or a phone keyboard adds a new line
+  if (e.key === 'Enter' && !e.shiftKey && e.target.classList?.contains('dmta') && !matchMedia('(pointer:coarse)').matches) { e.preventDefault(); e.target.form.requestSubmit(); }
+});
+document.addEventListener('input', (e) => {
+  const t = e.target;
+  if (t.classList?.contains('dmta')) { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 128) + 'px'; }
+  if (t.classList?.contains('nmq')) {
+    clearTimeout(nmT); const q = t.value.trim().replace(/^@/, ''), res = dlg.querySelector('.nmres'); if (!q) return void (res.innerHTML = '');
+    nmT = setTimeout(async () => {
+      try {
+        const us = (await api('/mentions?q=' + encodeURIComponent(q))).filter((u) => u.id !== me.id && !NM.some((x) => x.username === u.username));
+        res.innerHTML = us.length ? us.map((u) => `<button type="button" data-nmpick="${esc(u.username)}" data-nmname="${esc(u.name)}" class="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-zinc-900">${dot(u, 'h-9 w-9 text-sm')}<span class="min-w-0 truncate"><b>${esc(u.name)}</b>${bdg(u)} <span class="text-zinc-500">@${esc(u.username)}</span></span></button>`).join('') : '<p class="px-2 py-3 text-sm text-zinc-500">No matching accounts.</p>';
+      } catch {}
+    }, 200);
+  }
+});
+document.addEventListener('change', async (e) => {
+  if (!e.target.classList?.contains('dmfile')) return;
+  const f = e.target.closest('form'), file = e.target.files[0]; e.target.value = '';
+  if (!file || !file.type.startsWith('image/')) return;
+  f._file = await compress(file);
+  const pv = f.closest('.pg').querySelector('.pvw'); pv.classList.remove('hidden');
+  pv.innerHTML = `<div class="relative inline-block"><img src="${URL.createObjectURL(f._file)}" class="h-24 rounded-xl object-cover"><button type="button" data-dmrm aria-label="Remove photo" class="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-zinc-700 text-xs text-white">✕</button></div>`;
+});
 document.addEventListener('keydown', (e) => { // arrow/enter/tab/esc through @mention suggestions
   const c = e.target.closest?.('.cmp'), box = c?.querySelector('.mn');
   if (!box || box.classList.contains('hidden') || e.target.tagName !== 'TEXTAREA') return;

@@ -10,6 +10,7 @@ Created by **Alireza Asakareh (RealUnfazed)** · [MIT License](LICENSE)
 - **Posting:** text (280 chars), up to 4 photos per post (compressed in the browser first), GIF picker (GIPHY), polls, emoji picker, @mention autocomplete, link preview cards, edit within 60 minutes, reply controls (everyone / accounts you follow / only mentioned), drafts and scheduled posts
 - **Profiles:** photo, banner, bio, Posts / Replies / Media / Likes tabs, pinned post, followers and following lists, Follow / Unfollow
 - **Notifications:** likes, reposts, quotes, replies, mentions and follows, with a live unread badge
+- **Direct messages:** 1:1 and group chats, photos, read receipts ("Seen"), delete your own messages, unread badge, and message requests (a chat from someone you don't follow waits in Requests until you accept)
 - **Block & mute:** hide people from your feeds, search and notifications; blocking also removes follows both ways
 - **Badges:** Verified (blue), Business (gold), Government (grey) and Owner (gradient)
 - **Search & trends:** people, posts and hashtags, plus trending hashtags
@@ -63,6 +64,8 @@ capacitor.config.json  Mobile shell
 ## Notes
 
 - PostFile's free tier has monthly upload limits; text-only posts don't use any, and a post with 4 photos uses 4 uploads.
+- Messages are not end-to-end encrypted. They update by polling (open chat every 2.5 s, inbox every 5 s, badge every 10 s) because Vercel functions can't hold WebSocket connections.
+- Message requests: a new 1:1 chat goes to the recipient's Requests unless they follow the sender. Until accepted, the sender can send 3 messages. Replying accepts. Groups can only include people you follow or who follow you, and members can't be added after creation yet.
 - Scheduled posts are hidden by a time check on every read, so no background job or cron is needed. Drafts save text only (not photos or polls).
 - Link previews are fetched server-side when a post is created. Only public hosts on ports 80/443 are fetched, redirects are re-checked, and size and time are capped.
 - Uploads are capped at 4 MB each (Vercel's request body limit is about 4.5 MB).
@@ -74,8 +77,8 @@ capacitor.config.json  Mobile shell
 | --- | --- | --- |
 | 1. Social core | Notifications, profile tabs, followers/following lists, block & mute, pinned post | Done |
 | 2. Rich posting | Multi-image posts (up to 4), polls, edit post, emoji picker, @mention autocomplete, drafts and scheduled posts, reply controls, link previews | Done |
-| 3. Messaging | Direct messages (1:1 and group), read receipts, message requests | Next |
-| 4. Accounts & safety | Password reset, email verification, protected accounts, 2FA, dim/light themes, muted words, profile extras (location, website, birthday) | Planned |
+| 3. Messaging | Direct messages (1:1 and group), read receipts, message requests | Done |
+| 4. Accounts & safety | Password reset, email verification, protected accounts, 2FA, dim/light themes, muted words, profile extras (location, website, birthday) | Next |
 | 5. Platform | Lists, Explore and topics, post analytics, Community Notes, communities, bookmark folders | Planned |
 | 6. Production | Rate limiting, Tailwind build (no CDN), moderation tools, push notifications for mobile | Planned |
 | Later / needs external services | Spaces (live audio needs WebRTC infrastructure), video posts (needs video hosting), Premium and payouts (needs a payment provider) | Backlog |
