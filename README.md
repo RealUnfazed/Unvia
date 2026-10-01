@@ -11,6 +11,7 @@ Created by **Alireza Asakareh (RealUnfazed)** · [MIT License](LICENSE)
 - **Profiles:** photo, banner, bio, Posts / Replies / Media / Likes tabs, pinned post, followers and following lists, Follow / Unfollow
 - **Notifications:** likes, reposts, quotes, replies, mentions and follows, with a live unread badge
 - **Direct messages:** 1:1 and group chats, photos, read receipts ("Seen"), delete your own messages, unread badge, and message requests (a chat from someone you don't follow waits in Requests until you accept)
+- **Accounts & safety:** password reset and email verification by email, two-factor login (authenticator app + backup codes), log out of all devices, account lockout after repeated failures, protected accounts with follow requests, muted words, blocked/muted account lists, dim and light themes, profile location / website / birthday
 - **Block & mute:** hide people from your feeds, search and notifications; blocking also removes follows both ways
 - **Badges:** Verified (blue), Business (gold), Government (grey) and Owner (gradient)
 - **Search & trends:** people, posts and hashtags, plus trending hashtags
@@ -34,6 +35,9 @@ npm run dev               # http://localhost:3000
 | `POSTFILE_API_KEY` | PostFile key for image, avatar and banner uploads (server-side only) |
 | `GIPHY_API_KEY` | Enables the GIF picker (optional) |
 | `OWNER_USERNAME` | Account that becomes admin with the Owner badge (optional) |
+| `RESEND_API_KEY` | Sends password-reset and email-verification mail through [Resend](https://resend.com) (optional, see notes) |
+| `MAIL_FROM` | Sender, e.g. `Unvia <hello@yourdomain.com>` (defaults to Resend's test sender) |
+| `APP_URL` | Public URL used in email links, e.g. `https://unvia.example.com` (defaults to the request host) |
 
 The **first account registered** automatically becomes the platform owner and admin.
 
@@ -64,6 +68,11 @@ capacitor.config.json  Mobile shell
 ## Notes
 
 - PostFile's free tier has monthly upload limits; text-only posts don't use any, and a post with 4 photos uses 4 uploads.
+- **Email:** until you verify a sending domain with Resend, it only delivers to your own Resend account address. With no `RESEND_API_KEY`, links are printed to the server log and the owner can generate a reset link for any user from the admin panel (Users → Reset link), or get their own confirmation link in Settings.
+- **Sign-in protection:** 10 wrong passwords or codes lock that account for 15 minutes. Changing the password, resetting it, or changing 2FA signs every other device out. Per-IP rate limiting arrives with the production phase.
+- **Two-factor:** TOTP is implemented with Node's built-in crypto (verified against the RFC 6238 test vectors). The shared secret is stored in the database unencrypted, so restrict database access.
+- **Protected accounts:** posts, replies, media and follower lists are visible only to approved followers. Their posts can't be reposted or quoted. Existing followers are kept when you turn protection on, and turning it off approves everyone waiting. Quotes and reposts made before protection was enabled stay visible.
+- **Themes** are saved per device (browser), not per account.
 - Messages are not end-to-end encrypted. They update by polling (open chat every 2.5 s, inbox every 5 s, badge every 10 s) because Vercel functions can't hold WebSocket connections.
 - Message requests: a new 1:1 chat goes to the recipient's Requests unless they follow the sender. Until accepted, the sender can send 3 messages. Replying accepts. Groups can only include people you follow or who follow you, and members can't be added after creation yet.
 - Scheduled posts are hidden by a time check on every read, so no background job or cron is needed. Drafts save text only (not photos or polls).
@@ -78,8 +87,8 @@ capacitor.config.json  Mobile shell
 | 1. Social core | Notifications, profile tabs, followers/following lists, block & mute, pinned post | Done |
 | 2. Rich posting | Multi-image posts (up to 4), polls, edit post, emoji picker, @mention autocomplete, drafts and scheduled posts, reply controls, link previews | Done |
 | 3. Messaging | Direct messages (1:1 and group), read receipts, message requests | Done |
-| 4. Accounts & safety | Password reset, email verification, protected accounts, 2FA, dim/light themes, muted words, profile extras (location, website, birthday) | Next |
-| 5. Platform | Lists, Explore and topics, post analytics, Community Notes, communities, bookmark folders | Planned |
+| 4. Accounts & safety | Password reset, email verification, protected accounts, 2FA, dim/light themes, muted words, profile extras (location, website, birthday) | Done |
+| 5. Platform | Lists, Explore and topics, post analytics, Community Notes, communities, bookmark folders | Next |
 | 6. Production | Rate limiting, Tailwind build (no CDN), moderation tools, push notifications for mobile | Planned |
 | Later / needs external services | Spaces (live audio needs WebRTC infrastructure), video posts (needs video hosting), Premium and payouts (needs a payment provider) | Backlog |
 

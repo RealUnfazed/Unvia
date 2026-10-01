@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express'), cors = require('cors'), mongoose = require('mongoose'), bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken'), multer = require('multer'), path = require('path');
-const dns = require('dns').promises, net = require('net');
+const dns = require('dns').promises, net = require('net'), crypto = require('crypto');
 
 const { MONGODB_URI, JWT_SECRET = 'dev-secret', POSTFILE_API_KEY } = process.env;
 const PF = 'https://postfile.net/v1', pfH = { 'X-API-Key': POSTFILE_API_KEY };
@@ -13,7 +13,9 @@ const M = (n, s) => mongoose.models[n] || mongoose.model(n, new mongoose.Schema(
 const User = M('User', {
   username: { type: String, unique: true, lowercase: true, trim: true, match: /^[a-z0-9_]{3,15}$/ },
   name: String, bio: { type: String, default: '', maxlength: 160 }, hash: String,
-  following: [Id], bookmarks: [Id], blocked: [Id], muted: [Id], pinned: Id, avatar: String, banner: String, badge: { type: String, default: '' }, admin: Boolean, banned: Boolean,
+  following: [Id], bookmarks: [Id], blocked: [Id], muted: [Id], pinned: Id, protected: Boolean, followRequests: [Id], mutedWords: [String], location: String, website: String, birthday: Date, birthdayVisible: String,
+  email: { type: String, lowercase: true, trim: true, unique: true, sparse: true }, emailVerified: Boolean, pendingEmail: String, resetAt: Date,
+  twofa: { secret: String, enabled: Boolean, backup: [String] }, sv: { type: Number, default: 0 }, fails: Number, lockUntil: Date, avatar: String, banner: String, badge: { type: String, default: '' }, admin: Boolean, banned: Boolean,
   ghost: Boolean, fake: mongoose.Schema.Types.Mixed, // { target, mode: 'instant'|'gradual', startAt, endAt, startVal }
 });
 const Post = M('Post', {
@@ -36,6 +38,11 @@ const Msg = M('Msg', { conv: { type: Id, index: true }, from: { type: Id, ref: '
 const has = (a, id) => a.some((x) => String(x) === String(id));
 // Users whose content I shouldn't see: ones I blocked or muted, plus ones who blocked me.
 const hiddenFor = async (me) => (me ? [...new Set([...me.blocked, ...me.muted, ...(await User.distinct('_id', { blocked: me._id }))].map(String))] : []);
+const hiddenPosts = async (me) => {
+  const base = await hiddenFor(me);
+  const prot = await User.distinct('_id', { protected: true, ...(me ? { _id: { $nin: [me._id, ...me.following] } } : {}) });
+  return [...new Set([...base, ...prot.map(String)])];
+};
 // One notification per (recipient, sender, type, post); upsert makes repeat likes/follows idempotent.
 async function notify(to, from, type, post, at) {
   if (!to || String(to) === String(from)) return;
@@ -53,7 +60,7 @@ function fakeVal(f) {
 }
 // Posts scheduled to appear later (fake replies spread over time) are hidden from lists until their moment arrives.
 const visible = () => ({ $or: [{ visibleAt: null }, { visibleAt: { $exists: false } }, { visibleAt: { $lte: new Date() } }] });
-const pub = (u) => ({ id: u.id, username: u.username, name: u.name, bio: u.bio, avatar: u.avatar, banner: u.banner, badge: u.badge, admin: !!u.admin, pinned: u.pinned ? String(u.pinned) : null });
+const pub = (u) => ({ id: u.id, username: u.username, name: u.name, bio: u.bio, avatar: u.avatar, banner: u.banner, badge: u.badge, admin: !!u.admin, pinned: u.pinned ? String(u.pinned) : null, protected: !!u.protected });
 const pop = (q) => q.populate('author').populate({ path: 'repostOf', populate: { path: 'author' } }).populate({ path: 'quoteOf', populate: { path: 'author' } });
 const replyMsg = (o) => (o.replyLimit === 'following' ? `Only accounts @${o.author?.username} follows can reply` : 'Only people mentioned in this post can reply');
 const canReplyTo = (o, me) => {
@@ -85,14 +92,47 @@ const app = express();
 app.use(cors(), express.json());
 app.use('/api', async (req, _s, next) => {
   await db();
-  try { req.me = await User.findById(jwt.verify((req.headers.authorization || '').slice(7), JWT_SECRET).id); } catch {}
+  try { const p = jwt.verify((req.headers.authorization || '').slice(7), JWT_SECRET), u = p.t ? null : await User.findById(p.id); if (u && (u.sv || 0) === (p.sv || 0)) req.me = u; } catch {}
   const ow = (process.env.OWNER_USERNAME || '').toLowerCase();
   if (req.me && ow && !req.me.admin && req.me.username === ow) { req.me.admin = true; req.me.badge = 'owner'; await req.me.save(); }
   next();
 });
 const auth = (req, res, next) => (req.me && !req.me.banned ? next() : res.status(req.me ? 403 : 401).json({ error: req.me ? 'Account suspended' : 'Log in first' }));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 } });
-const sign = (u) => jwt.sign({ id: u.id }, JWT_SECRET, { expiresIn: '30d' });
+// `sv` (session version) is bumped on password change / reset / 2FA changes / "log out everywhere", which invalidates older tokens.
+const sign = (u) => jwt.sign({ id: u.id, sv: u.sv || 0 }, JWT_SECRET, { expiresIn: '30d' });
+const mine = (u) => ({ ...pub(u), mutedWords: u.mutedWords || [], email: u.email || null, emailVerified: !!u.emailVerified, pendingEmail: u.pendingEmail || null, twofa: !!u.twofa?.enabled,
+  requests: (u.followRequests || []).length, location: u.location || '', website: u.website || '', birthday: u.birthday ? u.birthday.toISOString().slice(0, 10) : '', birthdayVisible: u.birthdayVisible || 'none' });
+const bornText = (u) => (!u.birthday || !['monthday', 'full'].includes(u.birthdayVisible) ? '' : u.birthday.toLocaleDateString('en-US', u.birthdayVisible === 'full' ? { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' } : { month: 'long', day: 'numeric', timeZone: 'UTC' }));
+const sha = (x) => crypto.createHash('sha256').update(x).digest('hex');
+const safeEq = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
+// TOTP (RFC 6238) with Node's crypto, so no extra dependency
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+const b32enc = (buf) => { let bits = '', out = ''; for (const b of buf) bits += b.toString(2).padStart(8, '0'); for (let i = 0; i < bits.length; i += 5) out += B32[parseInt(bits.slice(i, i + 5).padEnd(5, '0'), 2)]; return out; };
+const b32dec = (str) => { let bits = ''; for (const c of str.replace(/=+$/, '').toUpperCase()) { const v = B32.indexOf(c); if (v >= 0) bits += v.toString(2).padStart(5, '0'); } const out = []; for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2)); return Buffer.from(out); };
+const hotp = (secret, counter) => { const b = Buffer.alloc(8); b.writeBigUInt64BE(BigInt(counter)); const h = crypto.createHmac('sha1', b32dec(secret)).update(b).digest(), o = h[19] & 15; return String((((h[o] & 127) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3]) % 1e6).padStart(6, '0'); };
+const totpOk = (secret, code) => /^\d{6}$/.test(String(code).trim()) && [-1, 0, 1].some((d) => safeEq(hotp(secret, Math.floor(Date.now() / 30000) + d), String(code).trim()));
+// Repeated wrong passwords/codes lock the account for 15 minutes (per-IP limits come in the production phase)
+async function failLogin(u) { const n = (u.fails || 0) + 1; await User.updateOne({ _id: u._id }, n >= 10 ? { fails: 0, lockUntil: new Date(Date.now() + 15 * 60000) } : { fails: n }); }
+const okLogin = async (u) => { if (u.fails || u.lockUntil) await User.updateOne({ _id: u._id }, { $unset: { fails: 1, lockUntil: 1 } }); };
+async function useSecondFactor(u, raw) { // authenticator code, or a one-time backup code
+  const code = String(raw || '').trim();
+  if (/^\d{6}$/.test(code)) return totpOk(u.twofa.secret, code);
+  const h = sha(code.replace(/[^a-f0-9]/gi, '').toLowerCase());
+  return (await User.updateOne({ _id: u._id, 'twofa.backup': h }, { $pull: { 'twofa.backup': h } })).modifiedCount === 1;
+}
+// Email via Resend's HTTP API. Without RESEND_API_KEY the message is logged instead (and the owner can use admin reset links).
+const mailReady = () => !!process.env.RESEND_API_KEY;
+async function sendMail(to, subject, text, html) {
+  if (!mailReady()) { console.log(`[mail not configured] To: ${to}\nSubject: ${subject}\n${text}`); return false; }
+  try {
+    const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: process.env.MAIL_FROM || 'Unvia <onboarding@resend.dev>', to: [to], subject, text, html }), signal: AbortSignal.timeout(8000) });
+    if (!r.ok) console.log('[mail failed]', r.status, await r.text().catch(() => ''));
+    return r.ok;
+  } catch (e) { console.log('[mail error]', e.message); return false; }
+}
+const mailHtml = (title, body, link, cta) => `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:auto;padding:24px"><h2>${title}</h2><p>${body}</p><p><a href="${link}" style="display:inline-block;background:#0ea5e9;color:#fff;padding:12px 22px;border-radius:999px;text-decoration:none;font-weight:700">${cta}</a></p><p style="color:#71717a;font-size:13px">If the button doesn’t work, paste this into your browser:<br>${link}</p></div>`;
+const APP = (req) => process.env.APP_URL || `${/^(localhost|127\.)/.test(req.headers.host || '') ? 'http' : 'https'}://${req.headers.host}`;
 
 app.post('/api/auth/register', async (req, res) => {
   const { username, password, name } = req.body;
@@ -100,17 +140,55 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const owner = !(await User.exists({})) || String(username).toLowerCase() === (process.env.OWNER_USERNAME || '').toLowerCase();
     const u = await User.create({ username, name: (name || username).slice(0, 30), hash: await bcrypt.hash(password, 10), admin: owner, badge: owner ? 'owner' : '' });
-    res.json({ token: sign(u), user: pub(u) });
+    res.json({ token: sign(u), user: mine(u) });
   } catch (e) {
     res.status(400).json({ error: e.code === 11000 ? 'Username taken' : 'Username: 3-15 letters, numbers or _' });
   }
 });
 app.post('/api/auth/login', async (req, res) => {
   const u = await User.findOne({ username: String(req.body.username || '').toLowerCase() });
-  if (!u || !(await bcrypt.compare(req.body.password || '', u.hash))) return res.status(401).json({ error: 'Wrong username or password' });
-  res.json({ token: sign(u), user: pub(u) });
+  if (u && u.lockUntil > new Date()) return res.status(429).json({ error: 'Too many attempts. Try again in a few minutes.' });
+  if (!u || !(await bcrypt.compare(req.body.password || '', u.hash))) { if (u) await failLogin(u); return res.status(401).json({ error: 'Wrong username or password' }); }
+  if (u.twofa?.enabled) return res.json({ needs2fa: true, ticket: jwt.sign({ id: u.id, t: '2fa' }, JWT_SECRET, { expiresIn: '5m' }) });
+  await okLogin(u); res.json({ token: sign(u), user: mine(u) });
 });
-app.get('/api/me', auth, (req, res) => res.json({ user: pub(req.me) }));
+app.post('/api/auth/2fa', async (req, res) => {
+  let p; try { p = jwt.verify(String(req.body.ticket || ''), JWT_SECRET); } catch { return res.status(401).json({ error: 'That sign-in expired. Start again.' }); }
+  const u = p.t === '2fa' && (await User.findById(p.id));
+  if (!u?.twofa?.enabled) return res.status(401).json({ error: 'That sign-in expired. Start again.' });
+  if (u.lockUntil > new Date()) return res.status(429).json({ error: 'Too many attempts. Try again in a few minutes.' });
+  if (!(await useSecondFactor(u, req.body.code))) { await failLogin(u); return res.status(401).json({ error: 'That code didn’t work' }); }
+  await okLogin(u); res.json({ token: sign(u), user: mine(u) });
+});
+// password reset and email verification use short-lived signed links (`t` marks them so they can never act as login tokens)
+app.post('/api/auth/forgot', async (req, res) => {
+  const id = String(req.body.identifier || '').trim().toLowerCase().slice(0, 120);
+  const u = id ? await User.findOne(id.includes('@') ? { email: id, emailVerified: true } : { username: id }) : null;
+  if (u?.email && u.emailVerified && !(u.resetAt && Date.now() - u.resetAt < 60000)) {
+    const link = `${APP(req)}/#/reset/${jwt.sign({ id: u.id, t: 'reset', ph: u.hash.slice(-12) }, JWT_SECRET, { expiresIn: '1h' })}`;
+    await User.updateOne({ _id: u._id }, { resetAt: new Date() });
+    await sendMail(u.email, 'Reset your Unvia password', `Reset your password (valid for 1 hour): ${link}\n\nIf you didn’t ask for this, you can ignore this email.`, mailHtml('Reset your password', 'Use the button below within the next hour. If you didn’t ask for this, you can ignore this email.', link, 'Choose a new password'));
+  } else if (u && !u.emailVerified) console.log(`[forgot] @${u.username} has no verified email; owner can generate a reset link in the admin panel`);
+  res.json({ ok: true }); // same answer whether or not the account exists
+});
+app.post('/api/auth/reset', async (req, res) => {
+  let p; try { p = jwt.verify(String(req.body.token || ''), JWT_SECRET); } catch { return res.status(400).json({ error: 'This link has expired or was already used' }); }
+  const u = p.t === 'reset' && (await User.findById(p.id));
+  if (!u || u.hash.slice(-12) !== p.ph) return res.status(400).json({ error: 'This link has expired or was already used' });
+  if (String(req.body.password || '').length < 8) return res.status(400).json({ error: 'Password needs 8+ characters' });
+  u.hash = await bcrypt.hash(req.body.password, 10); u.sv = (u.sv || 0) + 1; u.fails = undefined; u.lockUntil = undefined; await u.save(); // other devices are signed out; 2FA (if on) is still required to log in
+  res.json({ ok: true });
+});
+app.post('/api/auth/verify', async (req, res) => {
+  let p; try { p = jwt.verify(String(req.body.token || ''), JWT_SECRET); } catch { return res.status(400).json({ error: 'This link has expired' }); }
+  const u = p.t === 'verify' && (await User.findById(p.id));
+  if (!u || u.pendingEmail !== p.e) return res.status(400).json({ error: 'This link has expired' });
+  if (await User.exists({ email: p.e, _id: { $ne: u._id } })) return res.status(409).json({ error: 'That email is already in use' });
+  u.email = p.e; u.emailVerified = true; u.pendingEmail = undefined; await u.save();
+  res.json({ ok: true, email: p.e });
+});
+
+app.get('/api/me', auth, (req, res) => res.json({ user: mine(req.me) }));
 app.patch('/api/me', auth, upload.fields([{ name: 'avatar', maxCount: 1 }, { name: 'banner', maxCount: 1 }]), async (req, res) => {
   req.me.name = String(req.body.name || req.me.name).slice(0, 30);
   req.me.bio = String(req.body.bio || '').slice(0, 160);
@@ -118,21 +196,33 @@ app.patch('/api/me', auth, upload.fields([{ name: 'avatar', maxCount: 1 }, { nam
     const f = req.files?.[k]?.[0];
     if (f?.mimetype.startsWith('image/')) { const r = await pfUpload(f); if (!r) return res.status(502).json({ error: 'Image upload failed' }); req.me[k] = r.url; }
   }
+  if ('location' in req.body) req.me.location = String(req.body.location).trim().slice(0, 30);
+  if ('website' in req.body) {
+    const w = String(req.body.website).trim();
+    if (!w) req.me.website = '';
+    else { try { const url = new URL(/^https?:\/\//i.test(w) ? w : 'https://' + w); if (!/^https?:$/.test(url.protocol) || !url.hostname.includes('.')) throw 0; req.me.website = url.href.slice(0, 100); } catch { return res.status(400).json({ error: 'That website doesn’t look right' }); } }
+  }
+  if ('birthday' in req.body) {
+    if (!req.body.birthday) req.me.birthday = undefined;
+    else { const d = new Date(req.body.birthday + 'T00:00:00Z'), yrs = (Date.now() - d) / 31557600000; if (isNaN(d) || yrs < 13 || yrs > 120) return res.status(400).json({ error: 'Enter a valid birthday (you must be at least 13)' }); req.me.birthday = d; }
+  }
+  if (['none', 'monthday', 'full'].includes(req.body.birthdayVisible)) req.me.birthdayVisible = req.body.birthdayVisible;
   await req.me.save();
-  res.json({ user: pub(req.me) });
+  res.json({ user: mine(req.me) });
 });
 
 // feed = all | following | bookmarks | user:<name> | replies:<name> | media:<name> | likes:<name> (own only); paginated by `before`
 app.get('/api/posts', async (req, res) => {
-  const { feed = 'all', before } = req.query, me = req.me, f = { parent: null }, hidden = await hiddenFor(me);
+  const { feed = 'all', before } = req.query, me = req.me, f = { parent: null }, hidden = await hiddenPosts(me);
   let pinnedUser;
   if (feed === 'following') { if (!me) return res.json([]); f.author = { $in: [...me.following, me.id].filter((x) => !hidden.includes(String(x))) }; }
-  else if (feed === 'bookmarks') { if (!me) return res.json([]); delete f.parent; f._id = { $in: me.bookmarks }; }
+  else if (feed === 'bookmarks') { if (!me) return res.json([]); delete f.parent; f._id = { $in: me.bookmarks }; if (hidden.length) f.author = { $nin: hidden }; }
   else if (/^(user|replies|media|likes):/.test(feed)) {
     const [kind, name] = [feed.split(':')[0], feed.slice(feed.indexOf(':') + 1).toLowerCase()];
     const u = await User.findOne({ username: name });
     if (!u || (me && (u.blocked || []).some((x) => String(x) === me.id))) return res.json([]); // they blocked me
-    if (kind === 'likes') { if (me?.id !== u.id) return res.json([]); delete f.parent; f.likes = u._id; }
+    if (u.protected && me?.id !== u.id && !has(me?.following || [], u.id)) return res.json([]); // protected: followers only
+    if (kind === 'likes') { if (me?.id !== u.id) return res.json([]); delete f.parent; f.likes = u._id; if (hidden.length) f.author = { $nin: hidden }; }
     else { f.author = u._id; if (kind === 'replies') f.parent = { $ne: null }; if (kind === 'media') { f['media.url'] = { $exists: true, $ne: null }; f.repostOf = null; } if (kind === 'user') pinnedUser = u; }
   } else if (hidden.length) f.author = { $nin: hidden };
   if (before) f.createdAt = { $lt: new Date(before) };
@@ -147,14 +237,15 @@ app.get('/api/posts', async (req, res) => {
 app.get('/api/posts/refresh', async (req, res) => {
   const ids = String(req.query.ids || '').split(',').filter((x) => /^[a-f0-9]{24}$/.test(x)).slice(0, 150);
   if (!ids.length) return res.json([]);
-  res.json((await pop(Post.find({ _id: { $in: ids }, ...visible() }))).map((p) => shape(p, req.me)));
+  res.json((await pop(Post.find({ _id: { $in: ids }, author: { $nin: await hiddenPosts(req.me) }, ...visible() }))).map((p) => shape(p, req.me)));
 });
 
 app.get('/api/posts/:id', async (req, res) => {
   const p = await pop(Post.findById(req.params.id));
   if (!p) return res.sendStatus(404);
   if (p.visibleAt && p.visibleAt > new Date() && String(p.author?._id) !== req.me?.id) return res.sendStatus(404);
-  const hidden = await hiddenFor(req.me);
+  const hidden = await hiddenPosts(req.me);
+  if (p.author?.protected && String(p.author._id) !== req.me?.id && !has(req.me?.following || [], p.author.id)) return res.sendStatus(404);
   const [rs, par] = await Promise.all([pop(Post.find({ parent: p._id, author: { $nin: hidden }, ...visible() }).sort('createdAt').limit(50)), p.parent ? pop(Post.findById(p.parent)) : null]);
   res.json({ post: shape(p, req.me), parent: par && shape(par, req.me), replies: rs.map((r) => shape(r, req.me)) });
 });
@@ -163,6 +254,7 @@ const EDIT_MS = 60 * 60 * 1000;
 app.post('/api/posts', auth, upload.array('image', 4), async (req, res) => {
   const text = (req.body.text || '').trim().slice(0, 280), files = req.files || [], parent = req.body.parent || undefined;
   const quoteOf = /^[a-f0-9]{24}$/.test(req.body.quote || '') && (await Post.exists({ _id: req.body.quote })) ? req.body.quote : undefined;
+  if (quoteOf) { const qa = (await Post.findById(quoteOf).select('author')).author; if (String(qa) !== req.me.id && (await User.exists({ _id: qa, protected: true }))) return res.status(403).json({ error: 'Posts from protected accounts can’t be quoted' }); }
   let poll;
   if (req.body.poll) {
     if (parent) return res.status(400).json({ error: 'Replies can’t have polls' });
@@ -184,6 +276,7 @@ app.post('/api/posts', auth, upload.array('image', 4), async (req, res) => {
   if (parent) {
     const pp = await Post.findById(parent).populate('author');
     if (!pp) return res.status(404).json({ error: 'That post no longer exists' });
+    if (pp.author?.protected && String(pp.author._id) !== req.me.id && !has(req.me.following, pp.author.id)) return res.status(403).json({ error: 'Follow this protected account to reply' });
     if (!canReplyTo(pp, req.me)) return res.status(403).json({ error: replyMsg(pp) });
   }
   if (files.some((f) => !f.mimetype.startsWith('image/'))) return res.status(400).json({ error: 'Only images are supported' });
@@ -274,6 +367,7 @@ app.post('/api/posts/:id/like', auth, async (req, res) => {
 app.post('/api/posts/:id/repost', auth, async (req, res) => {
   const p = await Post.findById(req.params.id);
   if (!p || p.repostOf) return res.sendStatus(404);
+  if (!has(p.reposts, req.me.id) && String(p.author) !== req.me.id && (await User.exists({ _id: p.author, protected: true }))) return res.status(403).json({ error: 'Posts from protected accounts can’t be reposted' });
   if (has(p.reposts, req.me.id)) {
     await Post.updateOne({ _id: p._id }, { $pull: { reposts: req.me._id } });
     await Post.deleteOne({ author: req.me._id, repostOf: p._id });
@@ -309,13 +403,20 @@ app.get('/api/users/:u', async (req, res) => {
   if (!u) return res.sendStatus(404);
   const [followers, posts] = await Promise.all([User.countDocuments({ following: u._id }), Post.countDocuments({ author: u._id, parent: null, repostOf: null, ...visible() })]);
   res.json({ ...pub(u), joined: u.createdAt, following: u.following.length, followers: followers + fakeVal(u.fake), posts, isFollowing: !!req.me && has(req.me.following, u.id),
-    blocked: !!req.me && has(req.me.blocked, u.id), muted: !!req.me && has(req.me.muted, u.id), blockedBy: !!req.me && has(u.blocked, req.me.id) });
+    blocked: !!req.me && has(req.me.blocked, u.id), muted: !!req.me && has(req.me.muted, u.id), blockedBy: !!req.me && has(u.blocked, req.me.id),
+    requested: !!req.me && has(u.followRequests, req.me.id), canSee: !u.protected || (!!req.me && (req.me.id === u.id || has(req.me.following, u.id))), location: u.location || '', website: u.website || '', born: bornText(u) });
 });
 app.post('/api/users/:u/follow', auth, async (req, res) => {
   const u = await User.findOne({ username: req.params.u.toLowerCase() });
   if (!u || u.id === req.me.id) return res.sendStatus(400);
   if (has(req.me.blocked, u.id) || has(u.blocked, req.me.id)) return res.status(403).json({ error: 'You can’t follow this account' });
   const on = !has(req.me.following, u.id);
+  if (on && u.protected) { // toggles a pending request instead of following
+    const asked = has(u.followRequests, req.me.id);
+    await User.updateOne({ _id: u._id }, asked ? { $pull: { followRequests: req.me._id } } : { $addToSet: { followRequests: req.me._id } });
+    await (asked ? unnotify(u._id, req.me._id, 'request') : notify(u._id, req.me._id, 'request'));
+    return res.json({ isFollowing: false, requested: !asked });
+  }
   await User.updateOne({ _id: req.me._id }, on ? { $addToSet: { following: u._id } } : { $pull: { following: u._id } });
   await (on ? notify(u._id, req.me._id, 'follow') : unnotify(u._id, req.me._id, 'follow'));
   res.json({ isFollowing: on });
@@ -323,6 +424,7 @@ app.post('/api/users/:u/follow', auth, async (req, res) => {
 const userList = (filter) => async (req, res) => {
   const u = await User.findOne({ username: req.params.u.toLowerCase() });
   if (!u) return res.sendStatus(404);
+  if (u.protected && !(req.me && (req.me.id === u.id || has(req.me.following, u.id)))) return res.status(403).json({ error: 'These accounts are only visible to followers' });
   const hidden = await hiddenFor(req.me);
   const f0 = filter(u); // merge with any _id filter so "following" and "hidden" don't overwrite each other
   const us = await User.find({ ...f0, _id: { ...(f0._id || {}), $nin: hidden }, ghost: { $ne: true } }).sort('-createdAt').limit(100);
@@ -362,7 +464,7 @@ app.get('/api/suggest', async (req, res) => {
 });
 
 app.get('/api/trends', async (_req, res) => {
-  const ps = await Post.find({ createdAt: { $gt: new Date(Date.now() - 7 * 864e5) }, repostOf: null, ...visible() }).select('text').limit(500);
+  const ps = await Post.find({ createdAt: { $gt: new Date(Date.now() - 7 * 864e5) }, repostOf: null, author: { $nin: await User.distinct('_id', { protected: true }) }, ...visible() }).select('text').limit(500);
   const c = {};
   ps.forEach((p) => new Set(p.text.toLowerCase().match(/#\w+/g) || []).forEach((t) => (c[t.slice(1)] = (c[t.slice(1)] || 0) + 1)));
   res.json(Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([tag, count]) => ({ tag, count })));
@@ -371,8 +473,8 @@ app.get('/api/search', async (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 50);
   if (!q) return res.json({ users: [], posts: [] });
   const r = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-  const hidden = await hiddenFor(req.me);
-  const [us, ps] = await Promise.all([User.find({ $or: [{ username: r }, { name: r }], _id: { $nin: hidden }, ghost: { $ne: true } }).limit(5), pop(Post.find({ text: r, repostOf: null, author: { $nin: hidden }, ...visible() }).sort('-createdAt').limit(20))]);
+  const hidden = await hiddenFor(req.me), hp = await hiddenPosts(req.me);
+  const [us, ps] = await Promise.all([User.find({ $or: [{ username: r }, { name: r }], _id: { $nin: hidden }, ghost: { $ne: true } }).limit(5), pop(Post.find({ text: r, repostOf: null, author: { $nin: hp }, ...visible() }).sort('-createdAt').limit(20))]);
   res.json({ users: us.map((u) => ({ ...pub(u), isFollowing: !!req.me && has(req.me.following, u.id) })), posts: ps.map((p) => shape(p, req.me)) });
 });
 
@@ -429,7 +531,64 @@ async function pfUpload(f) {
 }
 app.post('/api/me/password', auth, async (req, res) => {
   if (!(await bcrypt.compare(req.body.current || '', req.me.hash)) || String(req.body.next || '').length < 8) return res.status(400).json({ error: 'Check your current and new password' });
-  req.me.hash = await bcrypt.hash(req.body.next, 10); await req.me.save(); res.json({ ok: true });
+  req.me.hash = await bcrypt.hash(req.body.next, 10); req.me.sv = (req.me.sv || 0) + 1; await req.me.save(); res.json({ ok: true, token: sign(req.me) });
+});
+app.post('/api/me/email', auth, async (req, res) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 120) return res.status(400).json({ error: 'That email doesn’t look right' });
+  if (!(await bcrypt.compare(req.body.password || '', req.me.hash))) return res.status(400).json({ error: 'Wrong password' });
+  if (await User.exists({ email, _id: { $ne: req.me._id } })) return res.status(409).json({ error: 'That email is already in use' });
+  const link = `${APP(req)}/#/verify/${jwt.sign({ id: req.me.id, t: 'verify', e: email }, JWT_SECRET, { expiresIn: '2d' })}`;
+  req.me.pendingEmail = email; await req.me.save();
+  const sent = await sendMail(email, 'Confirm your email for Unvia', `Confirm your email: ${link}`, mailHtml('Confirm your email', 'Tap the button to confirm this address for your Unvia account.', link, 'Confirm email'));
+  res.json({ ok: true, sent, ...(!mailReady() && req.me.admin && { link }) }); // no mail provider: the owner gets the link directly
+});
+app.post('/api/me/2fa/setup', auth, async (req, res) => {
+  if (req.me.twofa?.enabled) return res.status(400).json({ error: 'Two-factor is already on' });
+  if (!(await bcrypt.compare(req.body.password || '', req.me.hash))) return res.status(400).json({ error: 'Wrong password' });
+  const secret = b32enc(crypto.randomBytes(20));
+  req.me.twofa = { secret, enabled: false, backup: [] }; await req.me.save();
+  res.json({ secret, uri: `otpauth://totp/Unvia:${encodeURIComponent(req.me.username)}?secret=${secret}&issuer=Unvia` });
+});
+app.post('/api/me/2fa/enable', auth, async (req, res) => {
+  const t = req.me.twofa;
+  if (!t?.secret || t.enabled) return res.status(400).json({ error: 'Start setup first' });
+  if (!totpOk(t.secret, req.body.code)) return res.status(400).json({ error: 'That code didn’t work. Check your phone’s clock and try again.' });
+  const codes = Array.from({ length: 8 }, () => crypto.randomBytes(5).toString('hex'));
+  req.me.twofa.enabled = true; req.me.twofa.backup = codes.map(sha); req.me.sv = (req.me.sv || 0) + 1; await req.me.save();
+  res.json({ backup: codes.map((c) => c.slice(0, 5) + '-' + c.slice(5)), token: sign(req.me) });
+});
+app.post('/api/me/2fa/disable', auth, async (req, res) => {
+  if (!req.me.twofa?.enabled) return res.status(400).json({ error: 'Two-factor is off' });
+  if (!(await bcrypt.compare(req.body.password || '', req.me.hash)) || !(await useSecondFactor(req.me, req.body.code))) return res.status(400).json({ error: 'Wrong password or code' });
+  req.me.twofa = undefined; req.me.sv = (req.me.sv || 0) + 1; await req.me.save();
+  res.json({ token: sign(req.me) });
+});
+app.post('/api/me/logout-all', auth, async (req, res) => { req.me.sv = (req.me.sv || 0) + 1; await req.me.save(); res.json({ token: sign(req.me) }); });
+app.put('/api/me/muted-words', auth, async (req, res) => {
+  const words = [...new Set((Array.isArray(req.body.words) ? req.body.words : []).map((w) => String(w).trim().toLowerCase().slice(0, 40)).filter(Boolean))].slice(0, 50);
+  req.me.mutedWords = words; await req.me.save(); res.json({ words });
+});
+app.post('/api/me/privacy', auth, async (req, res) => {
+  const on = !!req.body.protected;
+  if (!on && req.me.protected && req.me.followRequests.length) { // going public approves everyone waiting
+    await User.updateMany({ _id: { $in: req.me.followRequests } }, { $addToSet: { following: req.me._id } });
+    req.me.followRequests = []; await Notif.deleteMany({ to: req.me._id, type: 'request' });
+  }
+  req.me.protected = on; await req.me.save(); res.json({ protected: on });
+});
+app.get('/api/me/relations', auth, async (req, res) => {
+  const [blocked, muted] = await Promise.all([User.find({ _id: { $in: req.me.blocked } }), User.find({ _id: { $in: req.me.muted } })]);
+  res.json({ blocked: blocked.map(pub), muted: muted.map(pub) });
+});
+app.get('/api/follow-requests', auth, async (req, res) => res.json((await User.find({ _id: { $in: req.me.followRequests }, ghost: { $ne: true } }).limit(100)).map(pub)));
+app.post('/api/follow-requests/:u/:act', auth, async (req, res) => {
+  const u = await User.findOne({ username: req.params.u.toLowerCase() });
+  if (!u || !has(req.me.followRequests, u.id) || !['approve', 'deny'].includes(req.params.act)) return res.sendStatus(404);
+  await User.updateOne({ _id: req.me._id }, { $pull: { followRequests: u._id } });
+  await unnotify(req.me._id, u._id, 'request');
+  if (req.params.act === 'approve') { await User.updateOne({ _id: u._id }, { $addToSet: { following: req.me._id } }); await notify(u._id, req.me._id, 'accepted'); }
+  res.json({ ok: true });
 });
 app.delete('/api/me', auth, async (req, res) => {
   await Post.deleteMany({ author: req.me._id });
@@ -470,6 +629,12 @@ app.post('/api/admin/users/:id', adm, async (req, res) => {
   if (['', 'verified', 'business', 'government', 'owner'].includes(req.body.badge)) set.badge = req.body.badge;
   if ('banned' in req.body && req.params.id !== req.me.id) set.banned = !!req.body.banned;
   await User.updateOne({ _id: req.params.id }, set); res.json({ ok: true });
+});
+
+app.post('/api/admin/users/:id/reset-link', adm, async (req, res) => {
+  const u = OID.test(req.params.id) ? await User.findById(req.params.id) : null;
+  if (!u) return res.sendStatus(404);
+  res.json({ link: `${APP(req)}/#/reset/${jwt.sign({ id: u.id, t: 'reset', ph: u.hash.slice(-12) }, JWT_SECRET, { expiresIn: '1h' })}` });
 });
 
 // ---- Fake engagement (owner-only: `adm` only ever passes for the platform owner in this app) ----

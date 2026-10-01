@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en" class="bg-black">
 <head>
+<script>try{var t=localStorage.theme||'dark';if(t==='auto')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=t}catch(e){}</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
@@ -31,6 +32,63 @@ aside{scrollbar-width:none}
 @keyframes grow{from{width:0}}.bar{animation:grow .8s cubic-bezier(.2,.8,.2,1)}
 .in-dm button.fixed{display:none}
 .dmfoot{position:sticky;bottom:calc(2.85rem + env(safe-area-inset-bottom))}@media (min-width:640px){.dmfoot{bottom:0}}
+/* themes: dim + light remap the app's neutral colors; the default (dark) needs no overrides */
+html[data-theme=dim]{color-scheme:dark}
+html[data-theme=dim] .bg-black{background-color:rgb(21 32 43)}
+html[data-theme=dim] .bg-black\/80{background-color:rgb(21 32 43 / 0.8)}
+html[data-theme=dim] .bg-black\/90{background-color:rgb(21 32 43 / 0.9)}
+html[data-theme=dim] .focus\:bg-black:focus{background-color:rgb(21 32 43)}
+html[data-theme=dim] .border-black{border-color:rgb(21 32 43)}
+html[data-theme=dim] .bg-white{background-color:rgb(255 255 255)}
+html[data-theme=dim] .text-black{color:rgb(15 20 25)}
+html[data-theme=dim] .hover\:bg-zinc-200:hover{background-color:rgb(215 219 220)}
+html[data-theme=dim] .hover\:bg-white\/\[\.03\]:hover{background-color:rgb(255 255 255 / 0.03)}
+html[data-theme=dim] .hover\:bg-white\/\[\.04\]:hover{background-color:rgb(255 255 255 / 0.04)}
+html[data-theme=dim] .bg-zinc-700\/70{background-color:rgb(75 90 102 / 0.7)}
+html[data-theme=dim] .bg-zinc-800{background-color:rgb(56 68 77)}
+html[data-theme=dim] .bg-zinc-900{background-color:rgb(30 41 54)}
+html[data-theme=dim] .bg-zinc-950\/60{background-color:rgb(25 39 52 / 0.6)}
+html[data-theme=dim] .hover\:bg-zinc-800:hover{background-color:rgb(56 68 77)}
+html[data-theme=dim] .hover\:bg-zinc-900:hover{background-color:rgb(30 41 54)}
+html[data-theme=dim] .border-zinc-600{border-color:rgb(75 90 102)}
+html[data-theme=dim] .border-zinc-800{border-color:rgb(56 68 77)}
+html[data-theme=dim] .text-zinc-100{color:rgb(247 249 249)}
+html[data-theme=dim] .text-zinc-400{color:rgb(154 167 178)}
+html[data-theme=dim] .text-zinc-500{color:rgb(139 152 165)}
+html[data-theme=dim] .text-zinc-600{color:rgb(107 124 138)}
+html[data-theme=dim] .hover\:text-zinc-200:hover{color:rgb(247 249 249)}
+html[data-theme=dim] .hover\:text-zinc-100:hover{color:rgb(247 249 249)}
+html[data-theme=dim] .placeholder\:text-zinc-500::placeholder{color:rgb(139 152 165)}
+html[data-theme=dim] dialog::backdrop{background:rgb(91 112 131 / 0.4)}
+html[data-theme=dim] .skl::after{background:linear-gradient(90deg,transparent,rgb(255 255 255 / 0.08),transparent)}
+html[data-theme=light]{color-scheme:light}
+html[data-theme=light] .bg-black{background-color:rgb(255 255 255)}
+html[data-theme=light] .bg-black\/80{background-color:rgb(255 255 255 / 0.8)}
+html[data-theme=light] .bg-black\/90{background-color:rgb(255 255 255 / 0.9)}
+html[data-theme=light] .focus\:bg-black:focus{background-color:rgb(255 255 255)}
+html[data-theme=light] .border-black{border-color:rgb(255 255 255)}
+html[data-theme=light] .bg-white{background-color:rgb(15 20 25)}
+html[data-theme=light] .text-black{color:rgb(255 255 255)}
+html[data-theme=light] .hover\:bg-zinc-200:hover{background-color:rgb(39 44 48)}
+html[data-theme=light] .hover\:bg-white\/\[\.03\]:hover{background-color:rgb(0 0 0 / 0.03)}
+html[data-theme=light] .hover\:bg-white\/\[\.04\]:hover{background-color:rgb(0 0 0 / 0.04)}
+html[data-theme=light] .bg-zinc-700\/70{background-color:rgb(185 202 211 / 0.7)}
+html[data-theme=light] .bg-zinc-800{background-color:rgb(225 232 236)}
+html[data-theme=light] .bg-zinc-900{background-color:rgb(239 243 244)}
+html[data-theme=light] .bg-zinc-950\/60{background-color:rgb(247 249 249 / 0.6)}
+html[data-theme=light] .hover\:bg-zinc-800:hover{background-color:rgb(225 232 236)}
+html[data-theme=light] .hover\:bg-zinc-900:hover{background-color:rgb(239 243 244)}
+html[data-theme=light] .border-zinc-600{border-color:rgb(185 202 211)}
+html[data-theme=light] .border-zinc-800{border-color:rgb(225 232 236)}
+html[data-theme=light] .text-zinc-100{color:rgb(15 20 25)}
+html[data-theme=light] .text-zinc-400{color:rgb(83 100 113)}
+html[data-theme=light] .text-zinc-500{color:rgb(83 100 113)}
+html[data-theme=light] .text-zinc-600{color:rgb(139 152 165)}
+html[data-theme=light] .hover\:text-zinc-200:hover{color:rgb(15 20 25)}
+html[data-theme=light] .hover\:text-zinc-100:hover{color:rgb(15 20 25)}
+html[data-theme=light] .placeholder\:text-zinc-500::placeholder{color:rgb(83 100 113)}
+html[data-theme=light] dialog::backdrop{background:rgb(91 112 131 / 0.4)}
+html[data-theme=light] .skl::after{background:linear-gradient(90deg,transparent,rgb(0 0 0 / 0.08),transparent)}
 </style>
 </head>
 <body class="min-h-screen bg-black text-zinc-100 antialiased" style="padding-top:env(safe-area-inset-top)">
@@ -105,12 +163,13 @@ async function api(path, o = {}) {
   const headers = { ...(typeof o.body === 'string' && { 'Content-Type': 'application/json' }), ...(token && { Authorization: 'Bearer ' + token }) };
   const r = await fetch(API + '/api' + path, { ...o, headers });
   const d = await r.json().catch(() => ({}));
+  if (r.status === 401 && token && !path.startsWith('/auth/')) { localStorage.removeItem('token'); localStorage.removeItem('me'); location.reload(); } // session ended (password changed / logged out everywhere)
   if (!r.ok) throw new Error(d.error || 'Something went wrong');
   return d;
 }
 
 const av = (u, c = 'h-10 w-10') => `<a href="#/u/${esc(u?.username)}" class="${c} grid shrink-0 place-items-center rounded-full font-bold text-white" style="background:hsl(${hue(u?.username)} 55% 42%)">${u?.avatar ? `<img src="${esc(u.avatar)}" class="h-full w-full rounded-full object-cover">` : esc((u?.name || '?')[0].toUpperCase())}</a>`;
-const fbtn = (u, on) => `<button data-follow="${esc(u)}" class="rounded-full px-4 py-1.5 text-sm font-bold ${on ? 'border border-zinc-600 text-white hover:border-red-500 hover:text-red-500' : 'bg-white text-black hover:bg-zinc-200'}">${on ? 'Following' : 'Follow'}</button>`;
+const fbtn = (u, on, req) => `<button data-follow="${esc(u)}" class="rounded-full px-4 py-1.5 text-sm font-bold ${on || req ? 'border border-zinc-600 text-zinc-100 hover:border-red-500 hover:text-red-500' : 'bg-white text-black hover:bg-zinc-200'}">${on ? 'Following' : req ? 'Requested' : 'Follow'}</button>`;
 const btn = (act, n, h, on = '', fill = false) => `<button data-act="${act}" class="flex items-center gap-1.5 rounded-full p-2 relative ${h} ${h.replace('text-', 'bg-')}/10 ${on || ''}">${ic({ like: 'heart', bookmark: 'mark', del: 'trash' }[act] || act, '', fill)}${n ? `<span class="cnt" data-val="${n}">${fmt(n)}</span>` : ''}</button>`;
 const guest = () => '<div class="p-10 text-center"><p class="mb-4 text-zinc-400">Log in to see this.</p><button data-login class="rounded-full bg-sky-500 px-6 py-2 font-bold text-white">Log in</button></div>';
 const head = (t, sub = '', back = true) => `<div class="sticky top-0 z-10 flex items-center gap-6 bg-black/80 px-4 py-2 backdrop-blur">${back ? `<button data-back class="rounded-full p-2 hover:bg-zinc-900">${ic('back')}</button>` : ''}<div><h1 class="text-xl font-bold leading-tight">${t}</h1>${sub ? `<div class="text-xs text-zinc-500">${sub}</div>` : ''}</div></div>`;
@@ -145,7 +204,7 @@ function renderPv(c) {
   const pv = c.querySelector('.pv'), files = c._files || [], gif = c.dataset.gif;
   const items = gif ? [{ src: gif, k: 'gif' }] : files.map((f, i) => ({ src: f.url, k: i }));
   pv.className = `pv mb-2 grid gap-2 ${items.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}${items.length ? '' : ' hidden'}`;
-  pv.innerHTML = items.map((it) => `<div class="drop relative"><img src="${esc(it.src)}" class="w-full rounded-2xl object-cover ${items.length > 1 ? 'h-40' : 'max-h-72'}"><button type="button" data-rmimg="${it.k}" aria-label="Remove" class="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-black/70 text-white hover:bg-black">✕</button></div>`).join('');
+  pv.innerHTML = items.map((it) => `<div class="drop relative"><img src="${esc(it.src)}" class="w-full rounded-2xl object-cover ${items.length > 1 ? 'h-40' : 'max-h-72'}"><button type="button" data-rmimg="${it.k}" aria-label="Remove" class="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-[rgba(0,0,0,.7)] text-white hover:bg-[#000]">✕</button></div>`).join('');
 }
 function togglePoll(c, on = !c.dataset.pollon) {
   const pl = c.querySelector('.pl'); if (!pl) return;
@@ -217,7 +276,7 @@ const openAuth = () => openDlg(`<form id="af" class="space-y-3 p-6"><h2 class="t
   <input name="username" required autocapitalize="none" placeholder="Username" class="${inp}">${reg ? `<input name="name" placeholder="Display name" class="${inp}">` : ''}
   <input name="password" type="password" required minlength="8" placeholder="Password (8+ characters)" class="${inp}"><p class="err text-sm text-red-400"></p>
   <button class="w-full rounded-full bg-sky-500 py-2.5 font-bold text-white">${reg ? 'Create account' : 'Log in'}</button>
-  <button type="button" data-sw class="text-sm text-sky-400">${reg ? 'Have an account? Log in' : 'New here? Create an account'}</button></form>`);
+  ${reg ? '' : '<button type="button" data-forgot class="block text-sm text-zinc-500 hover:underline">Forgot password?</button>'}<button type="button" data-sw class="text-sm text-sky-400">${reg ? 'Have an account? Log in' : 'New here? Create an account'}</button></form>`);
 
 const skel = '<div class="skl m-4 h-24 rounded-2xl bg-zinc-900"></div>'.repeat(3);
 const drop = (k) => { pages[k]?.el.remove(); delete pages[k]; };
@@ -255,7 +314,9 @@ function toast(m, err) {
 const urow = (u) => `<div class="flex items-center gap-3 px-4 py-3">${av(u)}<a href="#/u/${esc(u.username)}" class="min-w-0 flex-1 leading-tight"><div class="truncate font-bold hover:underline">${esc(u.name)}${bdg(u)}</div><div class="truncate text-sm text-zinc-500">@${esc(u.username)}</div></a>${me?.id === u.id ? '' : fbtn(u.username, !!u.isFollowing)}</div>`;
 
 const BC = { verified: ['#1d9bf0', 'Verified'], business: ['#e8b923', 'Verified business'], government: ['#8b98a5', 'Government'], owner: ['url(#og)', 'Platform owner'] };
-const bdg = (u) => { const b = BC[u?.badge]; return b ? `<svg viewBox="0 0 24 24" class="ml-1 inline-block h-[18px] w-[18px] shrink-0 align-[-3px]" fill="${b[0]}"><title>${b[1]}</title><path d="M12 1l2.6 2.1 3.3-.3 1.2 3.1 3 1.4-.7 3.3 1.5 2.9-2.4 2.3-.4 3.3-3.3.7L12 22l-2.8-2.1-3.3-.7-.4-3.3L3 13.6l1.5-2.9-.7-3.3 3-1.4 1.2-3.1 3.3.3z"/><path d="M8 12.5l2.7 2.7L16 9.5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>` : ''; };
+const LOCK = '<svg viewBox="0 0 24 24" class="ml-1 inline-block h-[15px] w-[15px] shrink-0 align-[-2px] text-zinc-500" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><title>Protected account</title><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+const bdg = (u) => bdg0(u) + (u?.protected ? LOCK : '');
+const bdg0 = (u) => { const b = BC[u?.badge]; return b ? `<svg viewBox="0 0 24 24" class="ml-1 inline-block h-[18px] w-[18px] shrink-0 align-[-3px]" fill="${b[0]}"><title>${b[1]}</title><path d="M12 1l2.6 2.1 3.3-.3 1.2 3.1 3 1.4-.7 3.3 1.5 2.9-2.4 2.3-.4 3.3-3.3.7L12 22l-2.8-2.1-3.3-.7-.4-3.3L3 13.6l1.5-2.9-.7-3.3 3-1.4 1.2-3.1 3.3.3z"/><path d="M8 12.5l2.7 2.7L16 9.5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>` : ''; };
 const collapse = (el) => {
   el.style.cssText = `height:${el.offsetHeight}px;overflow:hidden;transition:all .5s cubic-bezier(.4,0,.2,1)`;
   requestAnimationFrame(() => requestAnimationFrame(() => { el.style.cssText += ';height:0;padding-top:0;padding-bottom:0;opacity:0;transform:translateX(60px) rotate(3deg);border-width:0'; }));
@@ -275,10 +336,82 @@ async function gifs(q = '') {
   try { const g = await api('/gifs?q=' + encodeURIComponent(q)); $('#gg').innerHTML = g.length ? g.map((x) => `<img src="${esc(x)}" data-gif="${esc(x)}" class="mb-2 w-full cursor-pointer rounded-lg transition hover:scale-[1.02] hover:opacity-90">`).join('') : '<p class="p-6 text-zinc-500">No GIFs found. Is GIPHY_API_KEY set on the server?</p>'; }
   catch (x) { $('#gg').innerHTML = `<p class="p-6 text-red-400">${esc(x.message)}</p>`; }
 }
-function settings(v) {
-  v.innerHTML = head('Settings', '', false) + (!me ? guest() : `<div class="space-y-6 p-4"><div><h2 class="font-bold">Drafts &amp; scheduled</h2><a href="#/drafts" class="mt-2 inline-block rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Manage drafts &amp; scheduled posts</a></div><div><h2 class="font-bold">Your account</h2><p class="text-sm text-zinc-500">@${esc(me.username)}</p><button data-edit class="mt-2 rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Edit profile, photo &amp; banner</button></div>
-  <form id="pf" class="space-y-2"><h2 class="font-bold">Change password</h2><input name="current" type="password" required placeholder="Current password" class="${inp}"><input name="next" type="password" required minlength="8" placeholder="New password (8+ characters)" class="${inp}"><p class="err text-sm text-red-400"></p><button class="rounded-full bg-white px-5 py-2 font-bold text-black">Update password</button></form>
-  <div class="border-t border-zinc-800 pt-4"><h2 class="mb-2 font-bold text-red-500">Danger zone</h2><button data-out class="mr-2 rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Log out</button><button data-delacct class="rounded-full bg-red-600 px-4 py-1.5 font-bold">Delete account</button></div></div>`);
+// ---------- themes ----------
+const THEMES = [['dark', 'Default', '#000000'], ['dim', 'Dim', '#15202b'], ['light', 'Light', '#ffffff'], ['auto', 'Auto', null]];
+function applyTheme() {
+  const pref = localStorage.theme || 'dark', t = pref === 'auto' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : pref;
+  document.documentElement.dataset.theme = t;
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', { dark: '#000000', dim: '#15202b', light: '#ffffff' }[t]);
+}
+matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => localStorage.theme === 'auto' && applyTheme());
+// ---------- muted words (hidden client-side so paging still works) ----------
+let _mw = '', _mr = [];
+const muted = (p) => {
+  const ws = me?.mutedWords; if (!ws?.length || p.author?.id === me.id) return false;
+  const k = ws.join('\u0001'); if (k !== _mw) { _mw = k; _mr = ws.map((w) => new RegExp('(^|[^\\w#@])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w])', 'i')); }
+  return _mr.some((r) => r.test(p.text || ''));
+};
+// ---------- settings ----------
+const swt = (on, attr) => `<button ${attr} role="switch" aria-checked="${on}" class="relative h-7 w-12 shrink-0 rounded-full transition-colors ${on ? 'bg-sky-500' : 'bg-zinc-800'}"><i class="absolute top-0.5 h-6 w-6 rounded-full bg-[#fff] shadow transition-all ${on ? 'left-[22px]' : 'left-0.5'}"></i></button>`;
+const sec = (t, inner, d = '') => `<section class="border-b border-zinc-800 p-4"><h2 class="text-lg font-bold">${t}</h2>${d ? `<p class="mt-1 text-sm text-zinc-500">${d}</p>` : ''}<div class="mt-3 space-y-3">${inner}</div></section>`;
+const btnO = 'rounded-full border border-zinc-600 px-4 py-1.5 text-sm font-bold hover:bg-zinc-900';
+async function settings(v, quiet) {
+  if (!me) return void (v.innerHTML = head('Settings', '', false) + guest());
+  if (!quiet) v.innerHTML = head('Settings', '', false) + skel;
+  let rel = { blocked: [], muted: [] };
+  try { const [m, r] = await Promise.all([api('/me'), api('/me/relations')]); me = m.user; localStorage.me = JSON.stringify(me); rel = r; } catch {}
+  const theme = localStorage.theme || 'dark';
+  const urel = (u, k) => `<div class="flex items-center gap-3">${av(u, 'h-9 w-9 text-sm')}<div class="min-w-0 flex-1 truncate"><b>${esc(u.name)}</b> <span class="text-zinc-500">@${esc(u.username)}</span></div><button data-rel="${k}" data-un="${esc(u.username)}" class="${btnO}">${k === 'block' ? 'Unblock' : 'Unmute'}</button></div>`;
+  v.innerHTML = head('Settings', '', false)
+    + sec('Appearance', `<div class="grid grid-cols-2 gap-2 sm:grid-cols-4">${THEMES.map(([k, l, c]) => `<button data-th="${k}" class="rounded-2xl border p-3 text-left transition-colors ${theme === k ? 'border-sky-500' : 'border-zinc-800 hover:bg-zinc-900'}"><span class="mb-2 block h-8 rounded-lg border border-zinc-800" style="background:${c || 'linear-gradient(90deg,#000 50%,#fff 50%)'}"></span><span class="text-sm font-bold">${l}</span></button>`).join('')}</div>`)
+    + sec('Your account', `<p class="text-sm text-zinc-500">@${esc(me.username)}</p><div class="flex flex-wrap gap-2"><button data-edit class="${btnO}">Edit profile</button><a href="#/drafts" class="${btnO}">Drafts &amp; scheduled</a></div>
+      <div class="border-t border-zinc-800 pt-3"><b>Email</b>${me.email ? `<p class="text-sm">${esc(me.email)} ${me.emailVerified ? '<span class="text-emerald-400">✓ verified</span>' : '<span class="text-amber-400">not verified</span>'}</p>` : '<p class="text-sm text-zinc-500">No email yet. Add one so you can reset your password.</p>'}${me.pendingEmail ? `<p class="text-sm text-amber-400">Waiting for you to confirm ${esc(me.pendingEmail)}. Check your inbox.</p>` : ''}
+      <form id="emf" class="mt-2 space-y-2"><input name="email" type="email" required placeholder="${me.email ? 'New email address' : 'Email address'}" class="${inp}"><input name="password" type="password" required placeholder="Current password" class="${inp}"><p class="err text-sm text-red-400"></p><button class="rounded-full bg-white px-5 py-2 font-bold text-black">Send confirmation</button></form></div>`)
+    + sec('Privacy & safety', `<div class="flex items-center justify-between gap-4"><div><b>Protect your posts</b><p class="text-sm text-zinc-500">Only followers you approve can see your posts. People who already follow you stay.</p></div>${swt(me.protected, 'data-prot')}</div>${me.protected || me.requests ? `<a href="#/follow-requests" class="${btnO} inline-block">Follow requests${me.requests ? ` (${me.requests})` : ''}</a>` : ''}
+      <div class="border-t border-zinc-800 pt-3"><b>Muted words</b><p class="text-sm text-zinc-500">Posts containing these are hidden from your timelines and search.</p><form id="mwf" class="mt-2 flex gap-2"><input name="word" maxlength="40" placeholder="Word, phrase or #hashtag" class="${inp}"><button class="shrink-0 rounded-full bg-white px-4 font-bold text-black">Add</button></form><div class="mt-2 flex flex-wrap gap-2">${(me.mutedWords || []).map((w) => `<button data-mwrm="${esc(w)}" class="rounded-full bg-zinc-900 px-3 py-1 text-sm hover:bg-zinc-800">${esc(w)} ✕</button>`).join('') || '<span class="text-sm text-zinc-500">None yet.</span>'}</div></div>
+      <div class="border-t border-zinc-800 pt-3"><b>Blocked accounts</b><div class="mt-2 space-y-2">${rel.blocked.map((u) => urel(u, 'block')).join('') || '<p class="text-sm text-zinc-500">You haven’t blocked anyone.</p>'}</div></div>
+      <div class="border-t border-zinc-800 pt-3"><b>Muted accounts</b><div class="mt-2 space-y-2">${rel.muted.map((u) => urel(u, 'mute')).join('') || '<p class="text-sm text-zinc-500">You haven’t muted anyone.</p>'}</div></div>`)
+    + sec('Security', `<form id="pf" class="space-y-2"><b>Change password</b><input name="current" type="password" required placeholder="Current password" class="${inp}"><input name="next" type="password" required minlength="8" placeholder="New password (8+ characters)" class="${inp}"><p class="err text-sm text-red-400"></p><button class="rounded-full bg-white px-5 py-2 font-bold text-black">Update password</button></form>
+      <div class="flex items-center justify-between gap-4 border-t border-zinc-800 pt-3"><div><b>Two-factor authentication</b><p class="text-sm text-zinc-500">${me.twofa ? 'On. You’ll enter a code from your authenticator app when you log in.' : 'Add a second step at login using an authenticator app.'}</p></div><button data-tfa="${me.twofa ? 'off' : 'on'}" class="shrink-0 rounded-full px-4 py-1.5 text-sm font-bold ${me.twofa ? 'border border-zinc-600 hover:bg-zinc-900' : 'bg-white text-black'}">${me.twofa ? 'Turn off' : 'Turn on'}</button></div>
+      <div class="border-t border-zinc-800 pt-3"><button data-logoutall class="${btnO}">Log out of all other devices</button></div>`)
+    + `<section class="p-4"><h2 class="mb-2 font-bold text-red-500">Danger zone</h2><button data-out class="mr-2 ${btnO}">Log out</button><button data-delacct class="rounded-full bg-red-600 px-4 py-1.5 font-bold text-white">Delete account</button></section>`;
+}
+// two-factor setup: QR code (library loaded only when needed) + manual key
+let qrP; const loadQR = () => (qrP ||= new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; s.onload = ok; s.onerror = () => { qrP = null; no(); }; document.head.append(s); }));
+async function tfaStep2(r) {
+  openDlg(`<form id="t2f" class="space-y-3 p-6"><h2 class="text-2xl font-extrabold">Set up authenticator</h2><p class="text-sm text-zinc-400">Scan this QR code with an authenticator app (Google Authenticator, Authy, 1Password…), then enter the 6-digit code it shows.</p><div class="qr mx-auto grid h-[184px] w-[184px] place-items-center rounded-lg bg-[#fff] p-1 text-center text-xs text-zinc-500">Loading…</div><p class="text-center text-xs text-zinc-500">Can’t scan? Enter this key manually:<br><code class="select-all break-all font-mono text-sm text-zinc-100">${esc(r.secret)}</code></p><input name="code" required inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" class="${inp} text-center text-xl tracking-widest"><p class="err text-sm text-red-400"></p><button class="w-full rounded-full bg-sky-500 py-2.5 font-bold text-white">Turn on</button></form>`);
+  try { await loadQR(); const el = dlg.querySelector('.qr'); el.textContent = ''; new QRCode(el, { text: r.uri, width: 176, height: 176, correctLevel: QRCode.CorrectLevel.M }); }
+  catch { const el = dlg.querySelector('.qr'); if (el) el.textContent = 'QR unavailable. Use the key below.'; }
+}
+let CODES = [];
+const codesDlg = (codes) => { CODES = codes; openDlg(`<div class="space-y-3 p-6"><h2 class="text-2xl font-extrabold">Save your backup codes</h2><p class="text-sm text-zinc-400">If you lose your phone, each code works once to log in. They won’t be shown again.</p><div class="grid grid-cols-2 gap-2 rounded-xl bg-zinc-900 p-3 font-mono text-sm">${codes.map((c) => `<span>${c}</span>`).join('')}</div><div class="flex gap-2"><button data-copycodes class="flex-1 rounded-full border border-zinc-600 py-2 font-bold hover:bg-zinc-900">Copy</button><button data-codesdone class="flex-1 rounded-full bg-sky-500 py-2 font-bold text-white">I’ve saved them</button></div></div>`); };
+
+// ---------- account recovery pages ----------
+function forgotPage(v) {
+  v.innerHTML = head('Reset your password') + `<form id="fgf" class="space-y-3 p-6"><p class="text-sm text-zinc-400">Enter your username, or the verified email on your account, and we’ll send you a reset link.</p><input name="identifier" required autocapitalize="none" placeholder="Username or email" class="${inp}"><p class="err text-sm text-red-400"></p><button class="w-full rounded-full bg-sky-500 py-2.5 font-bold text-white">Send reset link</button><p class="text-xs text-zinc-500">Only accounts with a verified email can use this. If yours doesn’t have one, ask the site owner for a reset link.</p></form>`;
+}
+function resetPage(v, token) {
+  v.innerHTML = head('Choose a new password') + `<form id="rsf" data-token="${esc(token)}" class="space-y-3 p-6"><input name="password" type="password" required minlength="8" placeholder="New password (8+ characters)" class="${inp}"><input name="confirm" type="password" required minlength="8" placeholder="Confirm new password" class="${inp}"><p class="err text-sm text-red-400"></p><button class="w-full rounded-full bg-sky-500 py-2.5 font-bold text-white">Update password</button></form>`;
+}
+async function verifyPage(v, token) {
+  v.innerHTML = head('Confirm email') + '<p class="p-10 text-center text-zinc-400">Confirming…</p>';
+  try {
+    const d = await api('/auth/verify', { method: 'POST', body: JSON.stringify({ token }) });
+    if (me) { me.email = d.email; me.emailVerified = true; me.pendingEmail = null; localStorage.me = JSON.stringify(me); }
+    v.innerHTML = head('Confirm email') + `<div class="p-10 text-center"><p class="text-xl font-bold">Email confirmed ✓</p><p class="mt-2 text-zinc-400">${esc(d.email)} is verified. You can use it to reset your password.</p><a href="#/" class="mt-4 inline-block rounded-full bg-sky-500 px-6 py-2 font-bold text-white">Back to Unvia</a></div>`;
+  } catch (x) { v.innerHTML = head('Confirm email') + `<p class="p-10 text-center text-red-400">${esc(x.message)}</p>`; }
+}
+async function followRequests(v, pg) {
+  if (!me) return void (v.innerHTML = head('Follow requests') + guest());
+  v.innerHTML = head('Follow requests') + `<div class="rl">${skel}</div>`;
+  const l = v.querySelector('.rl'); let sig = null;
+  const load = async () => {
+    try {
+      const us = await api('/follow-requests'), nsig = us.map((u) => u.id).join(); if (nsig === sig) return; sig = nsig;
+      l.innerHTML = us.length ? us.map((u) => `<div class="flex items-center gap-2 px-4 py-3" data-fr="${esc(u.username)}">${av(u)}<a href="#/u/${esc(u.username)}" class="min-w-0 flex-1 leading-tight"><div class="truncate font-bold hover:underline">${esc(u.name)}${bdg(u)}</div><div class="truncate text-sm text-zinc-500">@${esc(u.username)}</div></a><button data-fract="approve" data-fru="${esc(u.username)}" class="rounded-full bg-sky-500 px-4 py-1.5 text-sm font-bold text-white hover:bg-sky-400">Approve</button><button data-fract="deny" data-fru="${esc(u.username)}" class="${btnO}">Deny</button></div>`).join('') : '<p class="p-10 text-center text-zinc-500">No pending follow requests.</p>';
+    } catch (x) { l.innerHTML = `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
+  };
+  await load(); pg.refresh = load;
 }
 async function admin(v) {
   if (!me?.admin) return (v.innerHTML = head('Admin', '', false) + '<p class="p-10 text-center text-zinc-500">Admins only.</p>');
@@ -287,7 +420,7 @@ async function admin(v) {
     const d = await api('/admin/overview');
     v.innerHTML = head('Admin panel', 'Manage your platform', false) + `<div class="grid grid-cols-3 gap-2 p-4">${[['Users', d.users], ['Posts', d.posts], ['Open reports', d.openReports]].map(([t, n]) => `<div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4"><div class="text-2xl font-extrabold">${fmt(n)}</div><div class="text-xs text-zinc-500">${t}</div></div>`).join('')}</div>
     <h2 class="px-4 pt-2 text-xl font-extrabold">Reports</h2>${d.reports.length ? d.reports.map((r) => `<div class="border-b border-zinc-800 p-4" data-rid="${r.id}"><div class="text-sm"><b>${esc(r.reason)}</b> · by @${esc(r.by)}</div><p class="my-2 rounded-xl bg-zinc-900 p-3 text-sm">${esc(r.preview)}</p><div class="flex gap-2">${[['dismiss', 'Dismiss'], ['delete', 'Delete post'], ['ban', 'Ban user']].map(([a, t]) => `<button data-ra="${a}" class="rounded-full border border-zinc-600 px-3 py-1 text-sm hover:bg-zinc-900">${t}</button>`).join('')}</div></div>`).join('') : '<p class="p-6 text-zinc-500">No open reports.</p>'}
-    <h2 class="px-4 pt-4 text-xl font-extrabold">Users &amp; badges</h2>${d.recent.map((u) => `<div class="flex items-center gap-2 border-b border-zinc-800 px-4 py-3" data-uid="${u.id}">${av(u)}<div class="min-w-0 flex-1 truncate"><b>${esc(u.name)}</b>${bdg(u)} <span class="text-zinc-500">@${esc(u.username)}</span></div><select data-badge class="rounded bg-zinc-900 px-2 py-1 text-sm">${['', 'verified', 'business', 'government', 'owner'].map((b) => `<option value="${b}" ${u.badge === b ? 'selected' : ''}>${b || 'no badge'}</option>`).join('')}</select><button data-ban data-banned="${u.banned ? 1 : 0}" class="text-sm text-red-500">${u.banned ? 'Unban' : 'Ban'}</button></div>`).join('')}
+    <h2 class="px-4 pt-4 text-xl font-extrabold">Users &amp; badges</h2>${d.recent.map((u) => `<div class="flex items-center gap-2 border-b border-zinc-800 px-4 py-3" data-uid="${u.id}">${av(u)}<div class="min-w-0 flex-1 truncate"><b>${esc(u.name)}</b>${bdg(u)} <span class="text-zinc-500">@${esc(u.username)}</span></div><select data-badge class="rounded bg-zinc-900 px-2 py-1 text-sm">${['', 'verified', 'business', 'government', 'owner'].map((b) => `<option value="${b}" ${u.badge === b ? 'selected' : ''}>${b || 'no badge'}</option>`).join('')}</select><button data-ban data-banned="${u.banned ? 1 : 0}" class="text-sm text-red-500">${u.banned ? 'Unban' : 'Ban'}</button><button data-rlink class="text-sm text-sky-400">Reset link</button></div>`).join('')}
     ${me.badge === 'owner' ? growthHTML() : ''}`;
     if (me.badge === 'owner') loadActive();
   } catch (x) { v.innerHTML = head('Admin panel', '', false) + `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
@@ -352,8 +485,9 @@ function feed(el, qs, empty) {
     try {
       const ps = await api(`/posts?${qs}${before ? '&before=' + encodeURIComponent(before) : ''}`);
       if (el._fid !== fid) return;
-      el.insertAdjacentHTML('beforeend', ps.map(card).join(''));
-      if (ps.length < 20) { done = true; s.innerHTML = el.children.length ? '' : `<p class="p-10 text-center text-zinc-500">${empty}</p>`; } else { before = ps.at(-1).feedAt; s.innerHTML = ''; }
+      const shown = ps.filter((p) => !muted(p));
+      el.insertAdjacentHTML('beforeend', shown.map(card).join(''));
+      if (ps.length < 20) { done = true; s.innerHTML = el.children.length ? '' : `<p class="p-10 text-center text-zinc-500">${empty}</p>`; } else { before = ps.at(-1).feedAt; s.innerHTML = ''; if (!shown.length) { busy = false; return more(); } }
     } catch (x) { done = true; s.innerHTML = `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
     busy = false;
   };
@@ -366,7 +500,7 @@ async function search(v, q, pg) {
   r.innerHTML = skel;
   try {
     const d = await api('/search?q=' + encodeURIComponent(q));
-    r.innerHTML = (d.users.length ? '<h2 class="px-4 pt-3 text-xl font-extrabold">People</h2>' + d.users.map(urow).join('') + '<div class="border-b border-zinc-800"></div>' : '') + d.posts.map(card).join('') + (d.users.length || d.posts.length ? '' : `<p class="p-10 text-center text-zinc-500">No results for “${esc(q)}”.</p>`);
+    r.innerHTML = (d.users.length ? '<h2 class="px-4 pt-3 text-xl font-extrabold">People</h2>' + d.users.map(urow).join('') + '<div class="border-b border-zinc-800"></div>' : '') + d.posts.filter((p) => !muted(p)).map(card).join('') + (d.users.length || d.posts.length ? '' : `<p class="p-10 text-center text-zinc-500">No results for “${esc(q)}”.</p>`);
     pg.refresh = () => refreshVisible(r);
   } catch (x) { r.innerHTML = `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
 }
@@ -382,7 +516,7 @@ const PT = [['user', 'Posts'], ['replies', 'Replies'], ['media', 'Media'], ['lik
 const PE = { user: 'No posts yet.', replies: 'No replies yet.', media: 'No photos or GIFs yet.', likes: 'Posts you like will show up here.' };
 const ptabs = (uid, on) => `<div class="flex border-b border-zinc-800">${PT.filter(([k]) => k !== 'likes' || me?.id === uid).map(([k, l]) => `<button data-ptab="${k}" class="relative flex-1 py-4 text-[15px] hover:bg-zinc-900 ${on === k ? 'font-bold' : 'text-zinc-500'}">${l}${on === k ? '<i class="absolute bottom-0 left-1/2 h-1 w-12 -translate-x-1/2 rounded-full bg-sky-500"></i>' : ''}</button>`).join('')}</div>`;
 const ctl = (u) => me?.id === u.id ? '<button data-edit class="rounded-full border border-zinc-600 px-4 py-1.5 font-bold hover:bg-zinc-900">Edit profile</button>'
-  : `<div class="flex gap-2">${u.blockedBy || u.blocked ? '' : `<button data-dm="${esc(u.username)}" aria-label="Message" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('mail')}</button>`}<button data-repuser="${u.id}" data-un="${esc(u.username)}" data-muted="${u.muted ? 1 : 0}" data-blocked="${u.blocked ? 1 : 0}" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('more')}</button>${u.blockedBy ? '' : u.blocked ? `<button data-block="${esc(u.username)}" class="rounded-full bg-red-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-red-500">Blocked</button>` : fbtn(u.username, u.isFollowing)}</div>`;
+  : `<div class="flex gap-2">${u.blockedBy || u.blocked ? '' : `<button data-dm="${esc(u.username)}" aria-label="Message" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('mail')}</button>`}<button data-repuser="${u.id}" data-un="${esc(u.username)}" data-muted="${u.muted ? 1 : 0}" data-blocked="${u.blocked ? 1 : 0}" class="rounded-full border border-zinc-600 p-2 hover:bg-zinc-900">${ic('more')}</button>${u.blockedBy ? '' : u.blocked ? `<button data-block="${esc(u.username)}" class="rounded-full bg-red-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-red-500">Blocked</button>` : fbtn(u.username, u.isFollowing, u.requested)}</div>`;
 
 async function profile(v, name, pg) {
   let u; try { u = await api('/users/' + name); } catch { return (v.innerHTML = head('Profile') + '<p class="p-10 text-center text-zinc-500">This account doesn’t exist.</p>'); }
@@ -391,9 +525,10 @@ async function profile(v, name, pg) {
   <div class="px-4 pb-3"><div class="-mt-14 flex items-end justify-between">${av(u, 'h-28 w-28 border-4 border-black text-4xl')}<div data-followbox>${ctl(u)}</div></div>
   <h2 class="mt-2 text-xl font-extrabold">${esc(u.name)}${bdg(u)}</h2><div class="text-zinc-500">@${esc(u.username)}</div>
   ${u.bio ? `<p class="mt-3 whitespace-pre-wrap">${linkify(u.bio)}</p>` : ''}
+  ${u.location || u.website || u.born ? `<p class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-zinc-500">${u.location ? `<span>📍 ${esc(u.location)}</span>` : ''}${u.website ? `<a href="${esc(u.website)}" target="_blank" rel="noopener noreferrer nofollow ugc" class="text-sky-500 hover:underline">🔗 ${esc(u.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''))}</a>` : ''}${u.born ? `<span>🎂 Born ${esc(u.born)}</span>` : ''}</p>` : ''}
   <p class="mt-3 text-sm text-zinc-500">Joined ${new Date(u.joined).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>
   <p class="mt-2 text-sm"><a href="#/u/${esc(u.username)}/following" class="hover:underline"><b data-stat="following" data-val="${u.following}">${fmt(u.following)}</b> <span class="text-zinc-500">Following</span></a> &nbsp; <a href="#/u/${esc(u.username)}/followers" class="hover:underline"><b data-stat="followers" data-val="${u.followers}">${fmt(u.followers)}</b> <span class="text-zinc-500">Followers</span></a></p></div>`
-  + (u.blockedBy ? `<div class="border-t border-zinc-800 p-10 text-center text-zinc-500">@${esc(u.username)} blocked you. You can’t follow them or see their posts.</div>` : `<div class="ptabs">${ptabs(u.id, 'user')}</div><div class="f"></div>`);
+  + (!u.canSee && !u.blockedBy ? `<div class="border-t border-zinc-800 p-10 text-center"><p class="text-lg font-bold">These posts are protected</p><p class="mt-1 text-zinc-500">Only approved followers can see @${esc(u.username)}’s posts.</p></div>` : u.blockedBy ? `<div class="border-t border-zinc-800 p-10 text-center text-zinc-500">@${esc(u.username)} blocked you. You can’t follow them or see their posts.</div>` : `<div class="ptabs">${ptabs(u.id, 'user')}</div><div class="f"></div>`);
   const f = v.querySelector('.f');
   if (f) feed(f, 'feed=user:' + u.username, PE.user);
   // Live-refreshes stats in place (animated count) instead of leaving numbers frozen at first load — covers real changes and gradual fake boosts alike.
@@ -425,8 +560,8 @@ async function people(v, name, kind, pg) {
 }
 
 // Notifications
-const NT = { like: ['heart', 'text-pink-500', 'liked your post'], repost: ['repost', 'text-emerald-500', 'reposted your post'], reply: ['reply', 'text-sky-500', 'replied to your post'], quote: ['repost', 'text-emerald-500', 'quoted your post'], mention: ['reply', 'text-sky-500', 'mentioned you'], follow: ['user', 'text-sky-500', 'followed you'] };
-const nrow = (n) => { const [i, c, t] = NT[n.type] || NT.mention; return `<div data-nlink="${n.post ? '#/p/' + n.post.id : '#/u/' + esc(n.from.username)}" class="flex cursor-pointer gap-3 border-b border-zinc-800 px-4 py-3 transition-colors hover:bg-white/[.03] ${n.read ? '' : 'bg-sky-500/[.07]'}"><div class="w-8 shrink-0 pt-1 ${c}">${ic(i, '!h-6 !w-6', n.type === 'like')}</div><div class="min-w-0 flex-1">${av(n.from, 'h-8 w-8 text-sm')}<p class="mt-2 text-[15px]"><a href="#/u/${esc(n.from.username)}" class="font-bold hover:underline">${esc(n.from.name)}</a>${bdg(n.from)} ${t}</p>${n.post?.text ? `<p class="mt-1 line-clamp-3 text-sm text-zinc-500">${esc(n.post.text)}</p>` : n.post?.media ? '<p class="mt-1 text-sm text-zinc-500">[image]</p>' : ''}<div class="mt-1 text-xs text-zinc-600">${ago(n.at)}</div></div></div>`; };
+const NT = { like: ['heart', 'text-pink-500', 'liked your post'], repost: ['repost', 'text-emerald-500', 'reposted your post'], reply: ['reply', 'text-sky-500', 'replied to your post'], quote: ['repost', 'text-emerald-500', 'quoted your post'], mention: ['reply', 'text-sky-500', 'mentioned you'], follow: ['user', 'text-sky-500', 'followed you'], request: ['user', 'text-sky-500', 'requested to follow you'], accepted: ['user', 'text-sky-500', 'accepted your follow request'] };
+const nrow = (n) => { const [i, c, t] = NT[n.type] || NT.mention; return `<div data-nlink="${n.type === 'request' ? '#/follow-requests' : n.post ? '#/p/' + n.post.id : '#/u/' + esc(n.from.username)}" class="flex cursor-pointer gap-3 border-b border-zinc-800 px-4 py-3 transition-colors hover:bg-white/[.03] ${n.read ? '' : 'bg-sky-500/[.07]'}"><div class="w-8 shrink-0 pt-1 ${c}">${ic(i, '!h-6 !w-6', n.type === 'like')}</div><div class="min-w-0 flex-1">${av(n.from, 'h-8 w-8 text-sm')}<p class="mt-2 text-[15px]"><a href="#/u/${esc(n.from.username)}" class="font-bold hover:underline">${esc(n.from.name)}</a>${bdg(n.from)} ${t}</p>${n.post?.text ? `<p class="mt-1 line-clamp-3 text-sm text-zinc-500">${esc(n.post.text)}</p>` : n.post?.media ? '<p class="mt-1 text-sm text-zinc-500">[image]</p>' : ''}<div class="mt-1 text-xs text-zinc-600">${ago(n.at)}</div></div></div>`; };
 async function notifications(v, pg) {
   if (!me) return void (v.innerHTML = head('Notifications', '', false) + guest());
   v.innerHTML = head('Notifications', '', false) + `<div class="nl">${skel}</div>`;
@@ -573,7 +708,7 @@ async function thread(v, id, pg) {
   v.innerHTML = head('Post');
   try {
     const d = await api('/posts/' + id);
-    v.insertAdjacentHTML('beforeend', (d.parent ? card(d.parent) : '') + card(d.post) + (me ? (d.post.canReply === false ? `<div class="border-b border-zinc-800 p-4 text-sm text-zinc-500">${replyMsg(d.post)}</div>` : `<div class="border-b border-zinc-800">${composer(d.post.id)}</div>`) : '') + d.replies.map(card).join('') + (d.replies.length ? '' : '<p class="nr p-10 text-center text-zinc-500">No replies yet.</p>'));
+    v.insertAdjacentHTML('beforeend', (d.parent ? card(d.parent) : '') + card(d.post) + (me ? (d.post.canReply === false ? `<div class="border-b border-zinc-800 p-4 text-sm text-zinc-500">${replyMsg(d.post)}</div>` : `<div class="border-b border-zinc-800">${composer(d.post.id)}</div>`) : '') + d.replies.filter((r) => !muted(r)).map(card).join('') + (d.replies.length ? '' : '<p class="nr p-10 text-center text-zinc-500">No replies yet.</p>'));
     // Live-refreshes this post's (and its parent's) like/repost/save/reply counts, and reveals any scheduled fake replies as they become visible.
     pg.refresh = async () => {
       try {
@@ -582,7 +717,7 @@ async function thread(v, id, pg) {
         P[nd.post.id] = nd.post; syncCounts(nd.post);
         if (nd.replies.length > d.replies.length) {
           v.querySelector('.nr')?.remove();
-          nd.replies.slice(d.replies.length).forEach((r) => { P[r.id] = r; v.insertAdjacentHTML('beforeend', card(r)); v.lastElementChild.classList.add('drop'); });
+          nd.replies.slice(d.replies.length).forEach((r) => { if (muted(r)) return; P[r.id] = r; v.insertAdjacentHTML('beforeend', card(r)); v.lastElementChild.classList.add('drop'); });
           d.replies = nd.replies;
         }
       } catch {}
@@ -600,6 +735,10 @@ function route() {
     else if (a === 'notifications') notifications(v, pg);
     else if (a === 'messages') (b ? chat(v, b, pg) : messages(v, pg));
     else if (a === 'drafts') drafts(v, pg);
+    else if (a === 'forgot') forgotPage(v);
+    else if (a === 'reset') resetPage(v, b);
+    else if (a === 'verify') verifyPage(v, b);
+    else if (a === 'follow-requests') followRequests(v, pg);
     else if (a === 'p') thread(v, b, pg);
     else if (a === 'settings') settings(v);
     else if (a === 'admin') admin(v);
@@ -616,7 +755,7 @@ function chrome() {
   const cur = location.hash || '#/', items = [['home', 'Home', '#/'], ['search', 'Search', '#/search'], ...(me ? [['bell', 'Notifications', '#/notifications'], ['mail', 'Messages', '#/messages']] : []), ['mark', 'Bookmarks', '#/bookmarks'], ['user', 'Profile', me ? '#/u/' + me.username : ''], ...(me ? [['sliders', 'Settings', '#/settings']] : []), ...(me?.admin ? [['shield', 'Admin', '#/admin']] : [])];
   const link = ([i, t, h], big) => `<a href="${h || '#/'}" ${h ? '' : 'data-need'} class="${big ? 'flex items-center gap-4 p-3 text-xl' : 'p-2.5'} rounded-full hover:bg-zinc-900 ${cur === h ? 'font-bold' : 'text-zinc-400'}"><span class="relative">${ic(i, big ? '!h-7 !w-7' : '!h-6 !w-6')}${badge(h)}</span>${big ? `<span class="hidden xl:inline">${t}</span>` : ''}</a>`;
   $('#nav').innerHTML = items.map((i) => link(i, 1)).join(''); $('#tabs').innerHTML = items.map((i) => link(i)).join('');
-  $('#acct').innerHTML = me ? `<div class="flex items-center gap-3 rounded-full p-2 hover:bg-zinc-900">${av(me)}<div class="hidden min-w-0 flex-1 leading-tight xl:block"><div class="truncate font-bold">${esc(me.name)}</div><div class="truncate text-sm text-zinc-500">@${esc(me.username)}</div></div><button data-out class="hidden text-sm text-zinc-500 hover:text-white xl:block">Log out</button></div>` : '<button data-login class="rounded-full bg-sky-500 px-5 py-2 font-bold text-white">Log in</button>';
+  $('#acct').innerHTML = me ? `<div class="flex items-center gap-3 rounded-full p-2 hover:bg-zinc-900">${av(me)}<div class="hidden min-w-0 flex-1 leading-tight xl:block"><div class="truncate font-bold">${esc(me.name)}</div><div class="truncate text-sm text-zinc-500">@${esc(me.username)}</div></div><button data-out class="hidden text-sm text-zinc-500 hover:text-zinc-100 xl:block">Log out</button></div>` : '<button data-login class="rounded-full bg-sky-500 px-5 py-2 font-bold text-white">Log in</button>';
 }
 
 async function sugg() {
@@ -672,6 +811,21 @@ document.addEventListener('click', async (e) => {
     if ('gifopen' in d) { gt = b.closest('.cmp'); gd.showModal(); return gifs(); }
     if (dlg.open && b?.tagName === 'A' && dlg.contains(b)) dlg.close(); // links inside dialogs navigate and close them
     if (d.qlink) return void (location.hash = '#/p/' + d.qlink);
+    if ('forgot' in d) { dlg.close(); return void (location.hash = '#/forgot'); }
+    if (d.th) { localStorage.theme = d.th; applyTheme(); return settings(pages['#/settings'].el, true); }
+    if ('prot' in d) {
+      const r = await api('/me/privacy', { method: 'POST', body: JSON.stringify({ protected: !me.protected }) }); me.protected = r.protected; localStorage.me = JSON.stringify(me);
+      Object.keys(pages).filter((k) => k !== '#/settings').forEach(drop); toast(r.protected ? 'Your posts are now protected' : 'Your posts are public'); return settings(pages['#/settings'].el, true);
+    }
+    if (d.mwrm) { const w = (me.mutedWords || []).filter((x) => x !== d.mwrm); await api('/me/muted-words', { method: 'PUT', body: JSON.stringify({ words: w }) }); me.mutedWords = w; localStorage.me = JSON.stringify(me); Object.keys(pages).filter((k) => k !== '#/settings').forEach(drop); return settings(pages['#/settings'].el, true); }
+    if (d.rel) { await api(`/users/${d.un}/${d.rel}`, { method: 'POST' }); Object.keys(pages).filter((k) => k !== '#/settings').forEach(drop); toast(d.rel === 'block' ? `Unblocked @${d.un}` : `Unmuted @${d.un}`); sugg(); return settings(pages['#/settings'].el, true); }
+    if (d.tfa === 'on') return openDlg(`<form id="t1f" class="space-y-3 p-6"><h2 class="text-2xl font-extrabold">Turn on two-factor</h2><p class="text-sm text-zinc-400">Confirm your password to start setup.</p><input name="password" type="password" required placeholder="Password" class="${inp}"><p class="err text-sm text-red-400"></p><button class="w-full rounded-full bg-sky-500 py-2.5 font-bold text-white">Continue</button></form>`);
+    if (d.tfa === 'off') return openDlg(`<form id="t3f" class="space-y-3 p-6"><h2 class="text-2xl font-extrabold">Turn off two-factor</h2><input name="password" type="password" required placeholder="Password" class="${inp}"><input name="code" required autocomplete="one-time-code" placeholder="Authenticator or backup code" class="${inp}"><p class="err text-sm text-red-400"></p><button class="w-full rounded-full bg-red-600 py-2.5 font-bold text-white">Turn off</button></form>`);
+    if ('logoutall' in d) { if (!confirm('Log out of every other device? This one stays signed in.')) return; const r = await api('/me/logout-all', { method: 'POST' }); token = localStorage.token = r.token; return toast('Signed out of all other devices'); }
+    if ('copycodes' in d) { navigator.clipboard?.writeText(CODES.join('\n')); return toast('Copied'); }
+    if ('codesdone' in d) return dlg.close();
+    if (d.fract) { await api(`/follow-requests/${d.fru}/${d.fract}`, { method: 'POST' }); collapse(b.closest('[data-fr]')); return toast(d.fract === 'approve' ? 'Approved' : 'Request denied'); }
+    if ('rlink' in d) { const r = await api(`/admin/users/${b.closest('[data-uid]').dataset.uid}/reset-link`, { method: 'POST' }); return openDlg(`<div class="space-y-3 p-6"><h2 class="text-xl font-extrabold">Password reset link</h2><p class="text-sm text-zinc-400">Send this to the user. It works once and expires in 1 hour.</p><input readonly value="${esc(r.link)}" onclick="this.select()" class="${inp}"></div>`); }
     if ('newdm' in d) return openNewDm();
     if (d.nmpick) { NM.push({ username: d.nmpick, name: d.nmname }); dlg.querySelector('.nmq').value = ''; dlg.querySelector('.nmres').innerHTML = ''; return nmDraw(); }
     if (d.nmrm) { NM = NM.filter((u) => u.username !== d.nmrm); return nmDraw(); }
@@ -749,7 +903,7 @@ document.addEventListener('click', async (e) => {
     if (d.um) { dlg.close(); if (d.um === 'report') return setTimeout(() => reportDlg('user', d.uid2), 250); return relate(d.um, d.un); }
     if (d.block) return relate('block', d.block);
     if (d.ptab) { const v = b.closest('.pg'); v.querySelector('.ptabs').innerHTML = ptabs(v.dataset.uid, d.ptab); const f = v.querySelector('.f'); f.innerHTML = ''; return feed(f, `feed=${d.ptab}:${v.dataset.user}`, PE[d.ptab]); }
-    if ('delacct' in d) { if (!confirm('Delete your account and all your posts forever?')) return; await api('/me', { method: 'DELETE' }); localStorage.clear(); location.hash = '#/'; return location.reload(); }
+    if ('delacct' in d) { if (!confirm('Delete your account and all your posts forever?')) return; await api('/me', { method: 'DELETE' }); localStorage.removeItem('token'); localStorage.removeItem('me'); location.hash = '#/'; return location.reload(); }
     if (d.ra) { const row = b.closest('[data-rid]'); await api('/admin/reports/' + row.dataset.rid, { method: 'POST', body: JSON.stringify({ action: d.ra }) }); collapse(row); return toast('Done'); }
     if ('ban' in d) { const row = b.closest('[data-uid]'), on = d.banned !== '1'; await api('/admin/users/' + row.dataset.uid, { method: 'POST', body: JSON.stringify({ banned: on }) }); b.dataset.banned = on ? '1' : '0'; b.textContent = on ? 'Unban' : 'Ban'; return toast(on ? 'User banned' : 'User unbanned'); }
     if (d.stopf) { await api('/admin/fake/stop', { method: 'POST', body: JSON.stringify({ type: d.stopf, id: d.stopid, kind: d.stopkind }) }); toast('Stopped — frozen at the current number'); return loadActive(); }
@@ -758,12 +912,12 @@ document.addEventListener('click', async (e) => {
     if (b?.getAttribute('href') === '#/' && cur === '#/') return scrollTo({ top: 0, behavior: 'smooth' });
     if ('back' in d) return history.length > 1 ? history.back() : (location.hash = '#/');
     if ('sw' in d) { reg = !reg; return openAuth(); }
-    if ('out' in d) { localStorage.clear(); location.hash = '#/'; return location.reload(); }
+    if ('out' in d) { localStorage.removeItem('token'); localStorage.removeItem('me'); location.hash = '#/'; return location.reload(); }
     if ('compose' in d) return me ? openDlg(`<div class="p-2">${composer()}</div>`) : openAuth();
-    if ('edit' in d) return openDlg(`<form id="ef" class="space-y-3 p-6"><h2 class="text-2xl font-extrabold">Edit profile</h2><input name="name" maxlength="30" value="${esc(me.name)}" placeholder="Name" class="${inp}"><textarea name="bio" maxlength="160" rows="3" placeholder="Bio" class="${inp}">${esc(me.bio)}</textarea><label class="block text-sm text-zinc-400">Profile photo<input name="avatar" type="file" accept="image/*" class="mt-1 block w-full text-sm"></label><label class="block text-sm text-zinc-400">Banner<input name="banner" type="file" accept="image/*" class="mt-1 block w-full text-sm"></label><p class="err text-sm text-red-400"></p><button class="w-full rounded-full bg-white py-2.5 font-bold text-black">Save</button></form>`);
+    if ('edit' in d) return openDlg(`<form id="ef" class="space-y-3 p-6"><h2 class="text-2xl font-extrabold">Edit profile</h2><input name="name" maxlength="30" value="${esc(me.name)}" placeholder="Name" class="${inp}"><textarea name="bio" maxlength="160" rows="3" placeholder="Bio" class="${inp}">${esc(me.bio)}</textarea><input name="location" maxlength="30" value="${esc(me.location)}" placeholder="Location" class="${inp}"><input name="website" maxlength="100" value="${esc(me.website)}" placeholder="Website" class="${inp}"><div class="grid grid-cols-2 gap-2"><label class="block text-sm text-zinc-400">Birthday<input name="birthday" type="date" value="${esc(me.birthday)}" max="${new Date().toISOString().slice(0, 10)}" class="${inp} mt-1"></label><label class="block text-sm text-zinc-400">Show on profile<select name="birthdayVisible" class="${inp} mt-1">${[['none', 'Hidden'], ['monthday', 'Month & day'], ['full', 'Full date']].map(([k, t]) => `<option value="${k}" ${me.birthdayVisible === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label></div><label class="block text-sm text-zinc-400">Profile photo<input name="avatar" type="file" accept="image/*" class="mt-1 block w-full text-sm"></label><label class="block text-sm text-zinc-400">Banner<input name="banner" type="file" accept="image/*" class="mt-1 block w-full text-sm"></label><p class="err text-sm text-red-400"></p><button class="w-full rounded-full bg-white py-2.5 font-bold text-black">Save</button></form>`);
     if (d.tab) { if (d.tab === 'following' && !me) return openAuth(); tab = d.tab; scrollTo(0, 0); return home(pages[cur].el, pages[cur]); }
     if (b?.classList.contains('sub')) return submit(b.closest('.cmp'));
-    if (d.follow) { if (!me) return openAuth(); const r = await api(`/users/${d.follow}/follow`, { method: 'POST' }); b.outerHTML = fbtn(d.follow, r.isFollowing); return; }
+    if (d.follow) { if (!me) return openAuth(); const r = await api(`/users/${d.follow}/follow`, { method: 'POST' }); b.outerHTML = fbtn(d.follow, r.isFollowing, r.requested); if (r.requested) toast('Follow request sent'); return; }
     if (d.act) {
       if (!me) return openAuth();
       const id = art.dataset.id, p = P[id];
@@ -783,10 +937,31 @@ document.addEventListener('submit', async (e) => {
   e.preventDefault(); const f = e.target, body = JSON.stringify(Object.fromEntries(new FormData(f)));
   if (f.classList.contains('dmf')) return void sendDm(f);
   try {
-    if (f.id === 'af') { const d = await api('/auth/' + (reg ? 'register' : 'login'), { method: 'POST', body }); localStorage.token = d.token; localStorage.me = JSON.stringify(d.user); location.reload(); }
+    if (f.id === 'af') { const d = await api('/auth/' + (reg ? 'register' : 'login'), { method: 'POST', body }); if (d.needs2fa) return void openDlg(`<form id="tf" data-ticket="${esc(d.ticket)}" class="space-y-3 p-6"><h2 class="text-2xl font-extrabold">Two-factor authentication</h2><p class="text-sm text-zinc-400">Enter the 6-digit code from your authenticator app, or one of your backup codes.</p><input name="code" required autocomplete="one-time-code" placeholder="123456" class="${inp} text-center text-xl tracking-widest"><p class="err text-sm text-red-400"></p><button class="w-full rounded-full bg-sky-500 py-2.5 font-bold text-white">Verify</button></form>`); localStorage.token = d.token; localStorage.me = JSON.stringify(d.user); location.reload(); }
     if (f.id === 'rnf') { await api('/conversations/' + pages[cur]._chat.id, { method: 'PATCH', body }); dlg.close(); Object.keys(pages).filter((k) => k.startsWith('#/messages')).forEach(drop); cur = null; route(); toast('Group renamed'); }
     if (f.id === 'edf') { const id = f.dataset.id, o = P[id], np = await api('/posts/' + id, { method: 'PATCH', body }); P[id] = { ...np, pinned: o.pinned, repostBy: o.repostBy }; dlg.close(); rerender(id); toast('Post updated'); }
-    if (f.id === 'pf') { await api('/me/password', { method: 'POST', body }); f.reset(); toast('Password updated'); }
+    if (f.id === 'tf') { const d = await api('/auth/2fa', { method: 'POST', body: JSON.stringify({ ticket: f.dataset.ticket, code: f.code.value }) }); localStorage.token = d.token; localStorage.me = JSON.stringify(d.user); location.reload(); }
+    if (f.id === 'fgf') { await api('/auth/forgot', { method: 'POST', body }); f.innerHTML = '<p class="py-6 text-center">If that account has a verified email, a reset link is on its way. It’s valid for 1 hour.</p>'; }
+    if (f.id === 'rsf') {
+      const x = Object.fromEntries(new FormData(f)); if (x.password !== x.confirm) throw new Error('Passwords don’t match');
+      await api('/auth/reset', { method: 'POST', body: JSON.stringify({ token: f.dataset.token, password: x.password }) });
+      f.innerHTML = '<div class="py-6 text-center"><p class="text-xl font-bold">Password updated ✓</p><p class="mt-1 text-zinc-400">You can log in with your new password now.</p><button type="button" data-login class="mt-4 rounded-full bg-sky-500 px-6 py-2 font-bold text-white">Log in</button></div>';
+    }
+    if (f.id === 'emf') {
+      const d = await api('/me/email', { method: 'POST', body }); f.reset();
+      if (d.link) openDlg(`<div class="space-y-3 p-6"><h2 class="text-xl font-extrabold">Confirmation link</h2><p class="text-sm text-zinc-400">Email sending isn’t set up on this server, so here’s your link. Open it to confirm.</p><input readonly value="${esc(d.link)}" onclick="this.select()" class="${inp}"><a href="${esc(d.link)}" class="block rounded-full bg-sky-500 py-2.5 text-center font-bold text-white">Confirm now</a></div>`);
+      else if (!d.sent) toast('Email sending isn’t set up on this server yet', 1); else toast('Check your inbox to confirm');
+      settings(pages['#/settings'].el, true);
+    }
+    if (f.id === 'mwf') {
+      const w = f.word.value.trim().toLowerCase(); if (!w) return;
+      const words = [...new Set([...(me.mutedWords || []), w])], r = await api('/me/muted-words', { method: 'PUT', body: JSON.stringify({ words }) });
+      me.mutedWords = r.words; localStorage.me = JSON.stringify(me); Object.keys(pages).filter((k) => k !== '#/settings').forEach(drop); settings(pages['#/settings'].el, true);
+    }
+    if (f.id === 't1f') { return void tfaStep2(await api('/me/2fa/setup', { method: 'POST', body })); }
+    if (f.id === 't2f') { const d = await api('/me/2fa/enable', { method: 'POST', body }); token = localStorage.token = d.token; settings(pages['#/settings'].el, true); codesDlg(d.backup); }
+    if (f.id === 't3f') { const d = await api('/me/2fa/disable', { method: 'POST', body }); token = localStorage.token = d.token; dlg.close(); toast('Two-factor turned off'); settings(pages['#/settings'].el, true); }
+    if (f.id === 'pf') { const d = await api('/me/password', { method: 'POST', body }); token = localStorage.token = d.token; f.reset(); toast('Password updated. Other devices were signed out.'); }
     if (f.id === 'ef') { me = (await api('/me', { method: 'PATCH', body: new FormData(f) })).user; localStorage.me = JSON.stringify(me); dlg.close(); chrome(); Object.keys(pages).forEach(drop); cur = null; route(); toast('Profile saved'); }
     if (f.id === 'ffForm') {
       await api('/admin/fake/followers', { method: 'POST', body: JSON.stringify({ amount: f.amount.value, mode: f.ff_mode.value, until: f.ff_until.value }) });
@@ -860,7 +1035,7 @@ document.addEventListener('change', async (e) => {
   if (!file || !file.type.startsWith('image/')) return;
   f._file = await compress(file);
   const pv = f.closest('.pg').querySelector('.pvw'); pv.classList.remove('hidden');
-  pv.innerHTML = `<div class="relative inline-block"><img src="${URL.createObjectURL(f._file)}" class="h-24 rounded-xl object-cover"><button type="button" data-dmrm aria-label="Remove photo" class="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-zinc-700 text-xs text-white">✕</button></div>`;
+  pv.innerHTML = `<div class="relative inline-block"><img src="${URL.createObjectURL(f._file)}" class="h-24 rounded-xl object-cover"><button type="button" data-dmrm aria-label="Remove photo" class="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-[rgba(0,0,0,.7)] text-xs text-white">✕</button></div>`;
 });
 document.addEventListener('keydown', (e) => { // arrow/enter/tab/esc through @mention suggestions
   const c = e.target.closest?.('.cmp'), box = c?.querySelector('.mn');
@@ -878,7 +1053,7 @@ dlg.addEventListener('close', () => {
   api(id ? '/drafts/' + id : '/drafts', { method: id ? 'PUT' : 'POST', body: JSON.stringify({ text: t }) }).then(() => toast('Saved to drafts')).catch(() => {});
 });
 addEventListener('hashchange', () => { chrome(); route(); });
-chrome(); route(); sugg(); trend();
+applyTheme(); chrome(); route(); sugg(); trend();
 if (token) { pollUnread(); setInterval(pollUnread, 10000); }
 if (token) api('/me').then((d) => { me = d.user; localStorage.me = JSON.stringify(me); chrome(); }).catch(() => {});
 </script>
