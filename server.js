@@ -13,7 +13,7 @@ const M = (n, s) => mongoose.models[n] || mongoose.model(n, new mongoose.Schema(
 const User = M('User', {
   username: { type: String, unique: true, lowercase: true, trim: true, match: /^[a-z0-9_]{3,15}$/ },
   name: String, bio: { type: String, default: '', maxlength: 160 }, hash: String,
-  following: [Id], bookmarks: [Id], blocked: [Id], muted: [Id], pinned: Id, protected: Boolean, followRequests: [Id], mutedWords: [String], location: String, website: String, birthday: Date, birthdayVisible: String,
+  following: [Id], bookmarks: [Id], blocked: [Id], muted: [Id], pinned: Id, pinnedLists: [Id], protected: Boolean, followRequests: [Id], mutedWords: [String], location: String, website: String, birthday: Date, birthdayVisible: String,
   email: { type: String, lowercase: true, trim: true, unique: true, sparse: true }, emailVerified: Boolean, pendingEmail: String, resetAt: Date,
   twofa: { secret: String, enabled: Boolean, backup: [String] }, sv: { type: Number, default: 0 }, fails: Number, lockUntil: Date, avatar: String, banner: String, badge: { type: String, default: '' }, admin: Boolean, banned: Boolean,
   ghost: Boolean, fake: mongoose.Schema.Types.Mixed, // { target, mode: 'instant'|'gradual', startAt, endAt, startVal }
@@ -25,7 +25,8 @@ const Post = M('Post', {
   images: [{ _id: false, url: String, fileId: String }],
   poll: { options: [{ _id: false, text: String, votes: [Id] }], endsAt: Date },
   preview: { url: String, title: String, description: String, image: String, site: String },
-  fake: { likes: mongoose.Schema.Types.Mixed, reposts: mongoose.Schema.Types.Mixed, saves: mongoose.Schema.Types.Mixed },
+  topics: { type: [String], index: true }, community: { type: Id, ref: 'Community', index: true }, views: { type: Number, default: 0 }, note: mongoose.Schema.Types.Mixed,
+  fake: { likes: mongoose.Schema.Types.Mixed, reposts: mongoose.Schema.Types.Mixed, saves: mongoose.Schema.Types.Mixed, views: mongoose.Schema.Types.Mixed },
 });
 
 const Report = M('Report', { by: { type: Id, ref: 'User' }, post: { type: Id, ref: 'Post' }, user: { type: Id, ref: 'User' }, reason: String, status: { type: String, default: 'open' } });
@@ -34,6 +35,14 @@ const Draft = M('Draft', { user: { type: Id, index: true }, text: String });
 // Direct messages. `reads` holds each member's last-read time (read receipts) and `clr` (when they cleared the chat).
 // `requestFor` is set while a 1:1 chat from someone the recipient doesn't follow waits for acceptance.
 const Conv = M('Conv', { members: [{ type: Id, ref: 'User' }], group: Boolean, name: String, owner: Id, requestFor: Id, lastAt: Date, lastText: String, lastFrom: Id, reads: [{ _id: false, u: Id, at: Date, clr: Date }] });
+// Phase 5: lists, communities, bookmark folders, community notes, per-day views
+const List = M('List', { owner: { type: Id, ref: 'User', index: true }, name: String, description: String, private: Boolean, members: [Id], subs: [Id] });
+const Community = M('Community', { name: String, nameKey: { type: String, unique: true }, description: String, rules: [String], owner: Id, mods: [Id], members: [Id], requests: [Id], joinMode: { type: String, default: 'open' } });
+const Folder = M('Folder', { user: { type: Id, index: true }, name: String, posts: [Id] });
+const Note = M('Note', { post: { type: Id, index: true }, author: { type: Id, ref: 'User' }, text: String, source: String, ratings: [{ _id: false, u: Id, v: Number }] });
+const DailySchema = new mongoose.Schema({ post: Id, author: { type: Id, index: true }, day: String, n: { type: Number, default: 0 } });
+DailySchema.index({ post: 1, day: 1 }, { unique: true });
+const Daily = mongoose.models.Daily || mongoose.model('Daily', DailySchema);
 const Msg = M('Msg', { conv: { type: Id, index: true }, from: { type: Id, ref: 'User' }, text: String, image: { url: String, fileId: String }, deleted: Boolean });
 const has = (a, id) => a.some((x) => String(x) === String(id));
 // Users whose content I shouldn't see: ones I blocked or muted, plus ones who blocked me.
@@ -43,6 +52,30 @@ const hiddenPosts = async (me) => {
   const prot = await User.distinct('_id', { protected: true, ...(me ? { _id: { $nin: [me._id, ...me.following] } } : {}) });
   return [...new Set([...base, ...prot.map(String)])];
 };
+const TOPICS = [
+  { slug: 'technology', name: 'Technology', emoji: '💻', kw: 'tech technology software ai ml coding code programming javascript typescript python rust developer devs api startup startups app apps gadget gadgets iphone android linux cybersecurity robot robots chip chips gpu cloud opensource github openai chatgpt' },
+  { slug: 'sports', name: 'Sports', emoji: '⚽', kw: 'football soccer basketball nba nfl mlb nhl tennis golf cricket f1 formula1 olympics goal match league champions worldcup athlete training marathon boxing mma ufc' },
+  { slug: 'music', name: 'Music', emoji: '🎵', kw: 'music song songs album albums band concert rapper hiphop rap pop rock jazz playlist spotify guitar piano singer lyrics dj' },
+  { slug: 'gaming', name: 'Gaming', emoji: '🎮', kw: 'gaming gamer gamers game games playstation ps5 xbox nintendo switch steam esports fortnite minecraft zelda pokemon valorant twitch speedrun rpg fps' },
+  { slug: 'science', name: 'Science', emoji: '🔬', kw: 'science scientist physics chemistry biology astronomy space nasa spacex rocket planet mars moon quantum research study experiment climate dna' },
+  { slug: 'art', name: 'Art & design', emoji: '🎨', kw: 'art artist drawing painting illustration design designer ux ui sketch digital photography photo photographer gallery sculpture animation' },
+  { slug: 'food', name: 'Food', emoji: '🍕', kw: 'food recipe recipes cooking cook dinner lunch breakfast pizza burger coffee tea baking dessert restaurant chef vegan sushi' },
+  { slug: 'travel', name: 'Travel', emoji: '✈️', kw: 'travel trip vacation flight flights hotel beach mountains hiking tourism journey passport roadtrip airport' },
+  { slug: 'news', name: 'News & politics', emoji: '📰', kw: 'news breaking politics election president government senate vote voting law policy minister parliament war economy' },
+  { slug: 'entertainment', name: 'Movies & TV', emoji: '🎬', kw: 'movie movies film films cinema series show netflix hbo disney trailer actor actress oscar anime episode season director' },
+  { slug: 'business', name: 'Business & finance', emoji: '📈', kw: 'business finance stocks stock market investing investor crypto bitcoin ethereum economy startup founder revenue profit trading bank inflation' },
+  { slug: 'health', name: 'Health & fitness', emoji: '💪', kw: 'health fitness gym workout running yoga diet nutrition sleep wellness mental therapy doctor medicine exercise' },
+  { slug: 'humor', name: 'Humor', emoji: '😂', kw: 'meme memes funny joke jokes lol lmao humor comedy haha' },
+].map((t) => ({ ...t, kw: new Set(t.kw.split(' ')) }));
+// Keyword-based topic tagging at write time (no ML): a post gets up to 3 topics from words and #hashtags it contains.
+const topicsOf = (text) => {
+  const words = new Set((String(text || '').toLowerCase().match(/#?[a-z0-9_']+/g) || []).map((w) => (w[0] === '#' ? w.slice(1) : w)));
+  return TOPICS.filter((t) => [...words].some((w) => t.kw.has(w))).map((t) => t.slug).slice(0, 3);
+};
+// Request-to-join communities are private: only members see their posts
+const hiddenCommunities = async (me) => (await Community.distinct('_id', { joinMode: 'request', ...(me ? { members: { $ne: me._id } } : {}) })).map(String);
+const canSeeCommunity = (c, me) => c.joinMode !== 'request' || (!!me && has(c.members, me.id));
+const isMember = (cid, me) => Community.exists({ _id: cid, members: me._id });
 // One notification per (recipient, sender, type, post); upsert makes repeat likes/follows idempotent.
 async function notify(to, from, type, post, at) {
   if (!to || String(to) === String(from)) return;
@@ -61,7 +94,7 @@ function fakeVal(f) {
 // Posts scheduled to appear later (fake replies spread over time) are hidden from lists until their moment arrives.
 const visible = () => ({ $or: [{ visibleAt: null }, { visibleAt: { $exists: false } }, { visibleAt: { $lte: new Date() } }] });
 const pub = (u) => ({ id: u.id, username: u.username, name: u.name, bio: u.bio, avatar: u.avatar, banner: u.banner, badge: u.badge, admin: !!u.admin, pinned: u.pinned ? String(u.pinned) : null, protected: !!u.protected });
-const pop = (q) => q.populate('author').populate({ path: 'repostOf', populate: { path: 'author' } }).populate({ path: 'quoteOf', populate: { path: 'author' } });
+const pop = (q) => q.populate('author').populate({ path: 'repostOf', populate: { path: 'author' } }).populate({ path: 'quoteOf', populate: { path: 'author' } }).populate({ path: 'community', select: 'name' });
 const replyMsg = (o) => (o.replyLimit === 'following' ? `Only accounts @${o.author?.username} follows can reply` : 'Only people mentioned in this post can reply');
 const canReplyTo = (o, me) => {
   const rl = o.replyLimit || 'all';
@@ -78,6 +111,7 @@ const shape = (p, me) => {
   const o = p.repostOf?.author ? p.repostOf : p;
   return {
     id: o.id, text: o.text, media: o.media?.url, images: (o.images?.length ? o.images : o.media?.url ? [o.media] : []).map((i) => i.url), at: o.createdAt, author: o.author && pub(o.author),
+    views: (o.views || 0) + fakeVal(o.fake?.views), community: o.community?.name ? { id: String(o.community._id), name: o.community.name } : null, note: o.note?.id ? { text: o.note.text, source: o.note.source || '' } : null,
     edited: !!o.editedAt, replyLimit: o.replyLimit || 'all', canReply: canReplyTo(o, me), poll: pollShape(o, me), scheduled: !!(o.scheduled && o.visibleAt && o.visibleAt > new Date()),
     preview: o.preview?.title ? { url: o.preview.url, title: o.preview.title, description: o.preview.description, image: o.preview.image, site: o.preview.site } : null,
     likes: o.likes.length + fakeVal(o.fake?.likes), liked: !!me && has(o.likes, me.id),
@@ -224,7 +258,21 @@ app.get('/api/posts', async (req, res) => {
     if (u.protected && me?.id !== u.id && !has(me?.following || [], u.id)) return res.json([]); // protected: followers only
     if (kind === 'likes') { if (me?.id !== u.id) return res.json([]); delete f.parent; f.likes = u._id; if (hidden.length) f.author = { $nin: hidden }; }
     else { f.author = u._id; if (kind === 'replies') f.parent = { $ne: null }; if (kind === 'media') { f['media.url'] = { $exists: true, $ne: null }; f.repostOf = null; } if (kind === 'user') pinnedUser = u; }
+  } else if (feed.startsWith('list:')) {
+    const l = OID.test(feed.slice(5)) ? await List.findById(feed.slice(5)) : null;
+    if (!l || (l.private && String(l.owner) !== me?.id)) return res.json([]);
+    f.author = { $in: l.members.filter((x) => !hidden.includes(String(x))) };
+  } else if (feed.startsWith('topic:')) { f.topics = feed.slice(6).toLowerCase().replace(/[^a-z-]/g, ''); if (hidden.length) f.author = { $nin: hidden };
+  } else if (feed.startsWith('community:')) {
+    const c = OID.test(feed.slice(10)) ? await Community.findById(feed.slice(10)) : null;
+    if (!c || !canSeeCommunity(c, me)) return res.json([]);
+    f.community = c._id; if (hidden.length) f.author = { $nin: hidden };
+  } else if (feed.startsWith('folder:')) {
+    const fo = me && OID.test(feed.slice(7)) ? await Folder.findOne({ _id: feed.slice(7), user: me._id }) : null;
+    if (!fo) return res.json([]);
+    delete f.parent; f._id = { $in: fo.posts }; if (hidden.length) f.author = { $nin: hidden };
   } else if (hidden.length) f.author = { $nin: hidden };
+  const hc = await hiddenCommunities(me); if (hc.length && !f.community) f.community = { $nin: hc };
   if (before) f.createdAt = { $lt: new Date(before) };
   let out = (await pop(Post.find({ ...f, ...visible() }).sort('-createdAt').limit(20))).map((p) => shape(p, me));
   if (pinnedUser?.pinned && !before) { // pinned post leads the first page of a profile
@@ -237,7 +285,7 @@ app.get('/api/posts', async (req, res) => {
 app.get('/api/posts/refresh', async (req, res) => {
   const ids = String(req.query.ids || '').split(',').filter((x) => /^[a-f0-9]{24}$/.test(x)).slice(0, 150);
   if (!ids.length) return res.json([]);
-  res.json((await pop(Post.find({ _id: { $in: ids }, author: { $nin: await hiddenPosts(req.me) }, ...visible() }))).map((p) => shape(p, req.me)));
+  res.json((await pop(Post.find({ _id: { $in: ids }, author: { $nin: await hiddenPosts(req.me) }, community: { $nin: await hiddenCommunities(req.me) }, ...visible() }))).map((p) => shape(p, req.me)));
 });
 
 app.get('/api/posts/:id', async (req, res) => {
@@ -245,6 +293,7 @@ app.get('/api/posts/:id', async (req, res) => {
   if (!p) return res.sendStatus(404);
   if (p.visibleAt && p.visibleAt > new Date() && String(p.author?._id) !== req.me?.id) return res.sendStatus(404);
   const hidden = await hiddenPosts(req.me);
+  if (p.community && (await hiddenCommunities(req.me)).includes(String(p.community._id))) return res.sendStatus(404);
   if (p.author?.protected && String(p.author._id) !== req.me?.id && !has(req.me?.following || [], p.author.id)) return res.sendStatus(404);
   const [rs, par] = await Promise.all([pop(Post.find({ parent: p._id, author: { $nin: hidden }, ...visible() }).sort('createdAt').limit(50)), p.parent ? pop(Post.findById(p.parent)) : null]);
   res.json({ post: shape(p, req.me), parent: par && shape(par, req.me), replies: rs.map((r) => shape(r, req.me)) });
@@ -288,7 +337,10 @@ app.post('/api/posts', auth, upload.array('image', 4), async (req, res) => {
   } else if (req.body.gif) { try { if (new URL(req.body.gif).hostname.endsWith('giphy.com')) images = [{ url: req.body.gif }]; } catch {} }
   const preview = !images.length && !poll && !quoteOf ? await linkPreview(text) : undefined;
   const replyLimit = ['following', 'mentioned'].includes(req.body.replyLimit) && !parent ? req.body.replyLimit : undefined;
-  const p = await Post.create({ author: req.me._id, text, media: images[0], images, parent, quoteOf, poll, preview, replyLimit, ...(sched && { scheduled: true, visibleAt: sched, createdAt: sched }) });
+  let community;
+  if (parent) { const pc = (await Post.findById(parent).select('community'))?.community; if (pc) { if (!(await isMember(pc, req.me))) return res.status(403).json({ error: 'Join this community to reply' }); community = pc; } }
+  else if (OID.test(req.body.community || '')) { if (!(await isMember(req.body.community, req.me))) return res.status(403).json({ error: 'Join this community to post in it' }); community = req.body.community; }
+  const p = await Post.create({ author: req.me._id, text, media: images[0], images, parent, quoteOf, poll, preview, replyLimit, topics: topicsOf(text), community, ...(sched && { scheduled: true, visibleAt: sched, createdAt: sched }) });
   if (quoteOf) await Post.updateOne({ _id: quoteOf }, { $inc: { quotes: 1 } });
   if (parent) await Post.updateOne({ _id: parent }, { $inc: { replies: 1 } });
   const told = new Set([String(req.me._id)]);
@@ -306,7 +358,7 @@ app.patch('/api/posts/:id', auth, async (req, res) => {
   if (Date.now() - p.createdAt > EDIT_MS) return res.status(403).json({ error: 'Posts can only be edited for 60 minutes' });
   const text = String(req.body.text || '').trim().slice(0, 280);
   if (!text && !p.media?.url && !p.quoteOf && !p.poll?.options?.length) return res.status(400).json({ error: 'A post can’t be empty' });
-  p.text = text;
+  p.text = text; p.topics = topicsOf(text);
   if (!(p.visibleAt && p.visibleAt > new Date())) p.editedAt = new Date();
   if (!p.images?.length && !p.poll?.options?.length && !p.quoteOf) p.preview = await linkPreview(text);
   await p.save();
@@ -383,11 +435,17 @@ app.post('/api/posts/:id/bookmark', auth, async (req, res) => {
   const on = has(req.me.bookmarks, req.params.id);
   await User.updateOne({ _id: req.me._id }, on ? { $pull: { bookmarks: req.params.id } } : { $addToSet: { bookmarks: req.params.id } });
   await Post.updateOne({ _id: req.params.id }, { $inc: { saves: on ? -1 : 1 } });
+  if (on) await Folder.updateMany({ user: req.me._id, posts: req.params.id }, { $pull: { posts: req.params.id } });
   res.json({ ok: true });
 });
 app.delete('/api/posts/:id', auth, async (req, res) => {
-  const p = await Post.findOneAndDelete(req.me.admin ? { _id: req.params.id } : { _id: req.params.id, author: req.me._id });
+  const p0 = OID.test(req.params.id) ? await Post.findById(req.params.id) : null;
+  if (!p0) return res.sendStatus(404);
+  const mod = p0.community && (await Community.exists({ _id: p0.community, $or: [{ owner: req.me._id }, { mods: req.me._id }] }));
+  if (!(req.me.admin || mod || String(p0.author) === req.me.id)) return res.sendStatus(404);
+  const p = await Post.findOneAndDelete({ _id: p0._id });
   if (!p) return res.sendStatus(404);
+  await Note.deleteMany({ post: p._id }); await Daily.deleteMany({ post: p._id }); await Folder.updateMany({ posts: p._id }, { $pull: { posts: p._id } });
   await Post.deleteMany({ repostOf: p._id });
   await Notif.deleteMany({ post: p._id });
   await User.updateOne({ _id: p.author, pinned: p._id }, { $unset: { pinned: 1 } });
@@ -454,7 +512,7 @@ app.post('/api/posts/:id/pin', auth, async (req, res) => {
 const notifQuery = async (me) => ({ to: me._id, from: { $nin: await hiddenFor(me) }, ...visible() });
 app.get('/api/notifications', auth, async (req, res) => {
   const ns = await Notif.find(await notifQuery(req.me)).sort('-createdAt').limit(60).populate('from').populate('post');
-  res.json(ns.filter((n) => n.from).map((n) => ({ id: n.id, type: n.type, read: n.read, at: n.visibleAt || n.createdAt, from: pub(n.from), post: n.post ? { id: n.post.id, text: n.post.text, media: !!n.post.media?.url } : null })));
+  res.json(ns.filter((n) => n.from).map((n) => ({ id: n.id, type: n.type, read: n.read, at: n.visibleAt || n.createdAt, from: n.type === 'note' ? { id: '', name: 'Community Notes', username: '' } : pub(n.from), post: n.post ? { id: n.post.id, text: n.post.text, media: !!n.post.media?.url } : null })));
 });
 app.get('/api/notifications/count', auth, async (req, res) => res.json({ unread: await Notif.countDocuments({ ...(await notifQuery(req.me)), read: false }) }));
 app.post('/api/notifications/read', auth, async (req, res) => { await Notif.updateMany({ to: req.me._id, read: false }, { read: true }); res.json({ ok: true }); });
@@ -463,8 +521,62 @@ app.get('/api/suggest', async (req, res) => {
   res.json((await User.find({ _id: { $nin: ex }, ghost: { $ne: true } }).sort('-createdAt').limit(4)).map(pub));
 });
 
+// Explore: trending posts (engagement with time decay, incl. the owner's boosts), hashtags and topic counts; cached 45s
+let exploreCache = { at: 0, data: null };
+async function exploreData() {
+  if (exploreCache.data && Date.now() - exploreCache.at < 45000) return exploreCache.data;
+  const ps = await Post.find({ createdAt: { $gt: new Date(Date.now() - 3 * 864e5) }, parent: null, repostOf: null, author: { $nin: await User.distinct('_id', { protected: true }) }, community: { $nin: await Community.distinct('_id', { joinMode: 'request' }) }, ...visible() }).sort('-createdAt').limit(400);
+  const score = (p) => { const eng = p.likes.length + fakeVal(p.fake?.likes) + 2 * (p.reposts.length + (p.quotes || 0) + fakeVal(p.fake?.reposts)) + 1.5 * p.replies + 0.02 * ((p.views || 0) + fakeVal(p.fake?.views)); return eng / Math.pow((Date.now() - p.createdAt) / 36e5 + 2, 1.2); };
+  const ids = ps.map((p) => [p, score(p)]).filter(([, sc]) => sc > 0).sort((a, b) => b[1] - a[1]).slice(0, 60).map(([p]) => p.id);
+  const tags = {};
+  for (const p of ps) for (const t of new Set((p.text || '').toLowerCase().match(/#\w+/g) || [])) { (tags[t.slice(1)] ||= new Set()).add(String(p.author)); }
+  const topTags = Object.entries(tags).map(([tag, a]) => ({ tag, count: ps.filter((p) => (p.text || '').toLowerCase().includes('#' + tag)).length, people: a.size })).sort((a, b) => b.people - a.people || b.count - a.count).slice(0, 15);
+  const tc = Object.fromEntries((await Post.aggregate([{ $match: { createdAt: { $gt: new Date(Date.now() - 7 * 864e5) }, topics: { $exists: true, $ne: [] } } }, { $unwind: '$topics' }, { $group: { _id: '$topics', n: { $sum: 1 } } }])).map((x) => [x._id, x.n]));
+  exploreCache = { at: Date.now(), data: { ids, tags: topTags, topics: TOPICS.map((t) => ({ slug: t.slug, name: t.name, emoji: t.emoji, count: tc[t.slug] || 0 })) } };
+  return exploreCache.data;
+}
+app.get('/api/explore', async (req, res) => {
+  const d = await exploreData();
+  const ps = await pop(Post.find({ _id: { $in: d.ids }, author: { $nin: await hiddenPosts(req.me) }, community: { $nin: await hiddenCommunities(req.me) }, ...visible() }));
+  const by = new Map(ps.map((p) => [p.id, p]));
+  res.json({ posts: d.ids.map((i) => by.get(i)).filter(Boolean).slice(0, 20).map((p) => shape(p, req.me)), tags: d.tags, topics: d.topics });
+});
+app.post('/api/admin/backfill-topics', (q, r, n) => adm(q, r, n), async (req, res) => { // tags posts written before topics existed
+  let n = 0;
+  for (const p of await Post.find({ topics: { $exists: false } }).select('text').limit(2000)) { await Post.updateOne({ _id: p._id }, { topics: topicsOf(p.text) }); n++; }
+  res.json({ updated: n });
+});
+// views: one impression per viewer session per post (client dedupes); authors don't count their own
+app.post('/api/views', async (req, res) => {
+  const ids = [...new Set((Array.isArray(req.body.ids) ? req.body.ids : []).filter((x) => OID.test(x)))].slice(0, 40);
+  if (ids.length) {
+    const ps = (await Post.find({ _id: { $in: ids }, ...visible() }).select('author')).filter((p) => String(p.author) !== req.me?.id), day = new Date().toISOString().slice(0, 10);
+    if (ps.length) {
+      await Post.updateMany({ _id: { $in: ps.map((p) => p._id) } }, { $inc: { views: 1 } });
+      await Daily.bulkWrite(ps.map((p) => ({ updateOne: { filter: { post: p._id, day }, update: { $inc: { n: 1 }, $setOnInsert: { author: p.author } }, upsert: true } })));
+    }
+  }
+  res.json({ ok: true });
+});
+const lastDays = (n) => Array.from({ length: n }, (_, i) => new Date(Date.now() - (n - 1 - i) * 864e5).toISOString().slice(0, 10));
+app.get('/api/posts/:id/analytics', auth, async (req, res) => {
+  const p = OID.test(req.params.id) ? await Post.findById(req.params.id) : null;
+  if (!p || (String(p.author) !== req.me.id && !req.me.admin)) return res.sendStatus(404);
+  const likes = p.likes.length + fakeVal(p.fake?.likes), reposts = p.reposts.length + fakeVal(p.fake?.reposts), quotes = p.quotes || 0, saves = (p.saves || 0) + fakeVal(p.fake?.saves), views = (p.views || 0) + fakeVal(p.fake?.views);
+  const eng = likes + reposts + quotes + p.replies + saves, days = lastDays(14), rows = await Daily.find({ post: p._id, day: { $in: days } });
+  res.json({ views, likes, reposts, quotes, replies: p.replies, saves, engagements: eng, rate: views ? Math.min(100, +((eng / views) * 100).toFixed(1)) : 0, votes: pollShape(p, req.me)?.total ?? null, daily: days.map((d) => ({ day: d, n: rows.find((r) => r.day === d)?.n || 0 })) });
+});
+app.get('/api/analytics', auth, async (req, res) => {
+  const ps = await Post.find({ author: req.me._id, repostOf: null, ...visible() }).sort('-createdAt').limit(500);
+  const row = (p) => ({ id: p.id, text: (p.text || '').slice(0, 90), at: p.createdAt, views: (p.views || 0) + fakeVal(p.fake?.views), likes: p.likes.length + fakeVal(p.fake?.likes), reposts: p.reposts.length + (p.quotes || 0) + fakeVal(p.fake?.reposts), replies: p.replies, saves: (p.saves || 0) + fakeVal(p.fake?.saves) });
+  const rows = ps.map(row), sum = (k) => rows.reduce((a, r) => a + r[k], 0), days = lastDays(28);
+  const d = await Daily.aggregate([{ $match: { author: req.me._id, day: { $in: days } } }, { $group: { _id: '$day', n: { $sum: '$n' } } }]);
+  res.json({ posts: rows.length, views: sum('views'), likes: sum('likes'), reposts: sum('reposts'), replies: sum('replies'), saves: sum('saves'), followers: (await User.countDocuments({ following: req.me._id })) + fakeVal(req.me.fake),
+    daily: days.map((x) => ({ day: x, n: d.find((r) => r._id === x)?.n || 0 })), top: [...rows].sort((a, b) => b.views - a.views).slice(0, 5) });
+});
+
 app.get('/api/trends', async (_req, res) => {
-  const ps = await Post.find({ createdAt: { $gt: new Date(Date.now() - 7 * 864e5) }, repostOf: null, author: { $nin: await User.distinct('_id', { protected: true }) }, ...visible() }).select('text').limit(500);
+  const ps = await Post.find({ createdAt: { $gt: new Date(Date.now() - 7 * 864e5) }, repostOf: null, author: { $nin: await User.distinct('_id', { protected: true }) }, community: { $nin: await Community.distinct('_id', { joinMode: 'request' }) }, ...visible() }).select('text').limit(500);
   const c = {};
   ps.forEach((p) => new Set(p.text.toLowerCase().match(/#\w+/g) || []).forEach((t) => (c[t.slice(1)] = (c[t.slice(1)] || 0) + 1)));
   res.json(Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([tag, count]) => ({ tag, count })));
@@ -474,7 +586,7 @@ app.get('/api/search', async (req, res) => {
   if (!q) return res.json({ users: [], posts: [] });
   const r = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
   const hidden = await hiddenFor(req.me), hp = await hiddenPosts(req.me);
-  const [us, ps] = await Promise.all([User.find({ $or: [{ username: r }, { name: r }], _id: { $nin: hidden }, ghost: { $ne: true } }).limit(5), pop(Post.find({ text: r, repostOf: null, author: { $nin: hp }, ...visible() }).sort('-createdAt').limit(20))]);
+  const [us, ps] = await Promise.all([User.find({ $or: [{ username: r }, { name: r }], _id: { $nin: hidden }, ghost: { $ne: true } }).limit(5), pop(Post.find({ text: r, repostOf: null, author: { $nin: hp }, community: { $nin: await hiddenCommunities(req.me) }, ...visible() }).sort('-createdAt').limit(20))]);
   res.json({ users: us.map((u) => ({ ...pub(u), isFollowing: !!req.me && has(req.me.following, u.id) })), posts: ps.map((p) => shape(p, req.me)) });
 });
 
@@ -656,7 +768,7 @@ app.post('/api/admin/fake/followers', adm, async (req, res) => {
 });
 app.post('/api/admin/fake/engagement', adm, async (req, res) => {
   const { postId, kind } = req.body;
-  if (!['likes', 'reposts', 'saves'].includes(kind)) return res.status(400).json({ error: 'Bad metric' });
+  if (!['likes', 'reposts', 'saves', 'views'].includes(kind)) return res.status(400).json({ error: 'Bad metric' });
   const p = await Post.findById(postId);
   if (!p) return res.status(404).json({ error: 'Post not found (paste the link from its ⋯ → Copy link)' });
   const r = schedule(p.fake?.[kind], req.body);
@@ -697,13 +809,13 @@ app.post('/api/admin/fake/replies', adm, async (req, res) => {
 app.get('/api/admin/fake/active', adm, async (req, res) => {
   const [users, posts] = await Promise.all([
     User.find({ 'fake.mode': 'gradual', 'fake.target': { $gt: 0 } }).limit(20),
-    pop(Post.find({ $or: [{ 'fake.likes.mode': 'gradual' }, { 'fake.reposts.mode': 'gradual' }, { 'fake.saves.mode': 'gradual' }] }).limit(20)),
+    pop(Post.find({ $or: [{ 'fake.likes.mode': 'gradual' }, { 'fake.reposts.mode': 'gradual' }, { 'fake.saves.mode': 'gradual' }, { 'fake.views.mode': 'gradual' }] }).limit(20)),
   ]);
   res.json({
     users: users.filter((u) => fakeVal(u.fake) < u.fake.target).map((u) => ({ id: u.id, username: u.username, ...u.fake, now: fakeVal(u.fake) })),
     posts: posts.map((p) => ({
       id: p.id, author: p.author?.username,
-      fake: Object.fromEntries(['likes', 'reposts', 'saves'].filter((k) => p.fake?.[k]?.mode === 'gradual' && fakeVal(p.fake[k]) < p.fake[k].target).map((k) => [k, { ...p.fake[k], now: fakeVal(p.fake[k]) }])),
+      fake: Object.fromEntries(['likes', 'reposts', 'saves', 'views'].filter((k) => p.fake?.[k]?.mode === 'gradual' && fakeVal(p.fake[k]) < p.fake[k].target).map((k) => [k, { ...p.fake[k], now: fakeVal(p.fake[k]) }])),
     })).filter((p) => Object.keys(p.fake).length),
   });
 });
@@ -853,6 +965,237 @@ app.delete('/api/messages/:id', auth, async (req, res) => {
   const last = await Msg.findOne({ conv: m.conv }).sort('-createdAt');
   if (last) await Conv.updateOne({ _id: m.conv }, { lastText: last.deleted ? 'Message deleted' : last.text || '📷 Photo' });
   res.json({ ok: true });
+});
+
+// ---- lists ----
+const oid = (x) => String(x?._id ?? x);
+const listShape = (l, me) => ({ id: l.id, name: l.name, description: l.description || '', private: !!l.private, owner: l.owner?.username ? pub(l.owner) : null, members: l.members.length, subs: l.subs.length, mine: oid(l.owner) === me?.id, subscribed: !!me && has(l.subs, me.id), pinned: !!me && has(me.pinnedLists || [], l.id) });
+async function loadList(req, res, ownerOnly) {
+  const l = OID.test(req.params.id) ? await List.findById(req.params.id).populate('owner') : null;
+  if (!l || (l.private && oid(l.owner) !== req.me?.id) || (ownerOnly && oid(l.owner) !== req.me?.id)) { res.sendStatus(404); return null; }
+  return l;
+}
+app.get('/api/lists', auth, async (req, res) => {
+  const hidden = await hiddenFor(req.me), ok = (l) => l.owner && !hidden.includes(oid(l.owner));
+  const [owned, subscribed, discover] = await Promise.all([
+    List.find({ owner: req.me._id }).sort('-createdAt').populate('owner'),
+    List.find({ subs: req.me._id, private: { $ne: true } }).populate('owner'),
+    List.find({ private: { $ne: true }, owner: { $ne: req.me._id }, subs: { $ne: req.me._id } }).sort('-createdAt').limit(20).populate('owner')]);
+  res.json({ owned: owned.map((l) => listShape(l, req.me)), subscribed: subscribed.filter(ok).map((l) => listShape(l, req.me)), discover: discover.filter(ok).map((l) => listShape(l, req.me)) });
+});
+app.get('/api/lists/pinned', async (req, res) => {
+  if (!req.me?.pinnedLists?.length) return res.json([]);
+  const ls = await List.find({ _id: { $in: req.me.pinnedLists } });
+  res.json(req.me.pinnedLists.map((id) => ls.find((l) => l.id === String(id))).filter((l) => l && (!l.private || String(l.owner) === req.me.id)).map((l) => ({ id: l.id, name: l.name })));
+});
+app.post('/api/lists', auth, async (req, res) => {
+  const name = String(req.body.name || '').trim().slice(0, 40);
+  if (!name) return res.status(400).json({ error: 'Give your list a name' });
+  if ((await List.countDocuments({ owner: req.me._id })) >= 20) return res.status(400).json({ error: 'You can have up to 20 lists' });
+  const l = await List.create({ owner: req.me._id, name, description: String(req.body.description || '').trim().slice(0, 100), private: !!req.body.private });
+  res.json({ id: l.id });
+});
+app.get('/api/lists/:id', async (req, res) => {
+  const l = await loadList(req, res); if (!l) return;
+  const us = await User.find({ _id: { $in: l.members.slice(0, 200) }, ghost: { $ne: true } });
+  res.json({ list: listShape(l, req.me), members: us.map((u) => ({ ...pub(u), isFollowing: !!req.me && has(req.me.following, u.id) })) });
+});
+app.patch('/api/lists/:id', auth, async (req, res) => {
+  const l = await loadList(req, res, true); if (!l) return;
+  if ('name' in req.body) { const n = String(req.body.name).trim().slice(0, 40); if (!n) return res.status(400).json({ error: 'Give your list a name' }); l.name = n; }
+  if ('description' in req.body) l.description = String(req.body.description).trim().slice(0, 100);
+  if ('private' in req.body) { l.private = !!req.body.private; if (l.private && l.subs.length) { await User.updateMany({ _id: { $in: l.subs } }, { $pull: { pinnedLists: l._id } }); l.subs = []; } }
+  await l.save(); res.json({ ok: true });
+});
+app.delete('/api/lists/:id', auth, async (req, res) => {
+  const l = await loadList(req, res, true); if (!l) return;
+  await User.updateMany({ pinnedLists: l._id }, { $pull: { pinnedLists: l._id } }); await List.deleteOne({ _id: l._id }); res.json({ ok: true });
+});
+app.post('/api/lists/:id/members/:username', auth, async (req, res) => {
+  const l = await loadList(req, res, true); if (!l) return;
+  const u = await User.findOne({ username: req.params.username.toLowerCase(), ghost: { $ne: true } });
+  if (!u) return res.sendStatus(404);
+  const on = !has(l.members, u.id);
+  if (on) {
+    if (has(u.blocked, req.me.id)) return res.status(403).json({ error: 'You can’t add this account' });
+    if (l.members.length >= 500) return res.status(400).json({ error: 'Lists can have up to 500 members' });
+  }
+  await List.updateOne({ _id: l._id }, on ? { $addToSet: { members: u._id } } : { $pull: { members: u._id } });
+  res.json({ in: on });
+});
+app.get('/api/users/:u/list-memberships', auth, async (req, res) => { // for the "add to list" dialog
+  const u = await User.findOne({ username: req.params.u.toLowerCase() });
+  if (!u) return res.sendStatus(404);
+  res.json((await List.find({ owner: req.me._id }).sort('-createdAt')).map((l) => ({ id: l.id, name: l.name, private: !!l.private, has: has(l.members, u.id) })));
+});
+app.post('/api/lists/:id/subscribe', auth, async (req, res) => {
+  const l = await loadList(req, res); if (!l || oid(l.owner) === req.me.id) return res.sendStatus(404);
+  const on = !has(l.subs, req.me.id);
+  await List.updateOne({ _id: l._id }, on ? { $addToSet: { subs: req.me._id } } : { $pull: { subs: req.me._id } });
+  if (!on) await User.updateOne({ _id: req.me._id }, { $pull: { pinnedLists: l._id } });
+  res.json({ subscribed: on });
+});
+app.post('/api/lists/:id/pin', auth, async (req, res) => {
+  const l = await loadList(req, res); if (!l) return;
+  if (oid(l.owner) !== req.me.id && !has(l.subs, req.me.id)) return res.status(403).json({ error: 'Subscribe to this list first' });
+  const on = !has(req.me.pinnedLists || [], l.id);
+  if (on && (req.me.pinnedLists || []).length >= 5) return res.status(400).json({ error: 'You can pin up to 5 lists' });
+  await User.updateOne({ _id: req.me._id }, on ? { $addToSet: { pinnedLists: l._id } } : { $pull: { pinnedLists: l._id } });
+  res.json({ pinned: on });
+});
+
+// ---- communities ----
+const commShape = (c, me) => {
+  const mod = !!me && (oid(c.owner) === me.id || has(c.mods, me.id));
+  return { id: c.id, name: c.name, description: c.description || '', rules: c.rules || [], joinMode: c.joinMode, members: c.members.length, canSee: canSeeCommunity(c, me), requested: !!me && has(c.requests, me.id), requests: mod ? c.requests.length : 0,
+    role: !me ? null : oid(c.owner) === me.id ? 'owner' : has(c.mods, me.id) ? 'mod' : has(c.members, me.id) ? 'member' : null };
+};
+async function loadComm(req, res, need) { // need: 'mod' | 'owner' | undefined
+  const c = OID.test(req.params.id) ? await Community.findById(req.params.id) : null;
+  if (!c) { res.sendStatus(404); return null; }
+  const me = req.me, isOwner = !!me && oid(c.owner) === me.id, isMod = isOwner || (!!me && has(c.mods, me.id));
+  if ((need === 'owner' && !isOwner) || (need === 'mod' && !isMod)) { res.status(403).json({ error: 'Only moderators can do that' }); return null; }
+  return c;
+}
+app.get('/api/communities', async (req, res) => {
+  const me = req.me;
+  const [mine, discover] = await Promise.all([me ? Community.find({ members: me._id }).sort('-createdAt') : [], Community.find(me ? { members: { $ne: me._id } } : {}).sort('-createdAt').limit(30)]);
+  res.json({ mine: mine.map((c) => commShape(c, me)), discover: discover.map((c) => commShape(c, me)) });
+});
+app.post('/api/communities', auth, async (req, res) => {
+  const name = String(req.body.name || '').trim().replace(/\s+/g, ' ');
+  if (name.length < 3 || name.length > 40) return res.status(400).json({ error: 'Name must be 3 to 40 characters' });
+  if ((await Community.countDocuments({ owner: req.me._id })) >= 10) return res.status(400).json({ error: 'You can own up to 10 communities' });
+  const rules = (Array.isArray(req.body.rules) ? req.body.rules : []).map((r) => String(r).trim().slice(0, 120)).filter(Boolean).slice(0, 8);
+  try {
+    const c = await Community.create({ name, nameKey: name.toLowerCase(), description: String(req.body.description || '').trim().slice(0, 300), rules, owner: req.me._id, members: [req.me._id], joinMode: req.body.joinMode === 'request' ? 'request' : 'open' });
+    res.json({ id: c.id });
+  } catch (e) { res.status(e.code === 11000 ? 409 : 500).json({ error: e.code === 11000 ? 'A community with that name already exists' : 'Server error' }); }
+});
+app.get('/api/communities/:id', async (req, res) => {
+  const c = await loadComm(req, res); if (!c) return;
+  const out = { community: commShape(c, req.me), members: [] };
+  if (out.community.canSee) out.members = (await User.find({ _id: { $in: c.members.slice(0, 100) }, ghost: { $ne: true } })).map((u) => ({ ...pub(u), role: oid(c.owner) === u.id ? 'owner' : has(c.mods, u.id) ? 'mod' : 'member' }));
+  res.json(out);
+});
+app.post('/api/communities/:id/join', auth, async (req, res) => {
+  const c = await loadComm(req, res); if (!c) return;
+  if (has(c.members, req.me.id)) return res.status(400).json({ error: 'You’re already a member' });
+  if (c.joinMode === 'open') { await Community.updateOne({ _id: c._id }, { $addToSet: { members: req.me._id } }); return res.json({ joined: true, requested: false }); }
+  const asked = has(c.requests, req.me.id);
+  await Community.updateOne({ _id: c._id }, asked ? { $pull: { requests: req.me._id } } : { $addToSet: { requests: req.me._id } });
+  res.json({ joined: false, requested: !asked });
+});
+app.post('/api/communities/:id/leave', auth, async (req, res) => {
+  const c = await loadComm(req, res); if (!c) return;
+  if (oid(c.owner) === req.me.id) return res.status(400).json({ error: 'Owners can’t leave. Delete the community instead.' });
+  await Community.updateOne({ _id: c._id }, { $pull: { members: req.me._id, mods: req.me._id, requests: req.me._id } }); res.json({ ok: true });
+});
+app.get('/api/communities/:id/requests', auth, async (req, res) => {
+  const c = await loadComm(req, res, 'mod'); if (!c) return;
+  res.json((await User.find({ _id: { $in: c.requests }, ghost: { $ne: true } }).limit(100)).map(pub));
+});
+app.post('/api/communities/:id/requests/:username/:act', auth, async (req, res) => {
+  const c = await loadComm(req, res, 'mod'); if (!c) return;
+  const u = await User.findOne({ username: req.params.username.toLowerCase() });
+  if (!u || !has(c.requests, u.id) || !['approve', 'deny'].includes(req.params.act)) return res.sendStatus(404);
+  await Community.updateOne({ _id: c._id }, { $pull: { requests: u._id }, ...(req.params.act === 'approve' && { $addToSet: { members: u._id } }) });
+  res.json({ ok: true });
+});
+app.post('/api/communities/:id/members/:username/remove', auth, async (req, res) => {
+  const c = await loadComm(req, res, 'mod'); if (!c) return;
+  const u = await User.findOne({ username: req.params.username.toLowerCase() });
+  if (!u || !has(c.members, u.id) || oid(c.owner) === u.id || (has(c.mods, u.id) && oid(c.owner) !== req.me.id)) return res.status(403).json({ error: 'You can’t remove this member' });
+  await Community.updateOne({ _id: c._id }, { $pull: { members: u._id, mods: u._id } }); res.json({ ok: true });
+});
+app.post('/api/communities/:id/mods/:username', auth, async (req, res) => {
+  const c = await loadComm(req, res, 'owner'); if (!c) return;
+  const u = await User.findOne({ username: req.params.username.toLowerCase() });
+  if (!u || !has(c.members, u.id) || oid(c.owner) === u.id) return res.sendStatus(404);
+  const on = !has(c.mods, u.id);
+  await Community.updateOne({ _id: c._id }, on ? { $addToSet: { mods: u._id } } : { $pull: { mods: u._id } }); res.json({ mod: on });
+});
+app.patch('/api/communities/:id', auth, async (req, res) => {
+  const c = await loadComm(req, res, 'owner'); if (!c) return;
+  if ('description' in req.body) c.description = String(req.body.description).trim().slice(0, 300);
+  if (Array.isArray(req.body.rules)) c.rules = req.body.rules.map((r) => String(r).trim().slice(0, 120)).filter(Boolean).slice(0, 8);
+  if (['open', 'request'].includes(req.body.joinMode)) { c.joinMode = req.body.joinMode; if (c.joinMode === 'open' && c.requests.length) { c.members.push(...c.requests.filter((r) => !has(c.members, r))); c.requests = []; } }
+  await c.save(); res.json({ ok: true });
+});
+app.delete('/api/communities/:id', auth, async (req, res) => {
+  const c = await loadComm(req, res, 'owner'); if (!c) return;
+  for (const p of await Post.find({ community: c._id, 'images.fileId': { $exists: true } }).select('images')) for (const im of p.images) if (im.fileId) pfDelete(im.fileId);
+  await Post.deleteMany({ community: c._id }); await Community.deleteOne({ _id: c._id }); res.json({ ok: true });
+});
+
+// ---- bookmark folders ----
+app.get('/api/folders', auth, async (req, res) => res.json((await Folder.find({ user: req.me._id }).sort('createdAt')).map((f) => ({ id: f.id, name: f.name, count: f.posts.length, ...(OID.test(req.query.post || '') && { has: has(f.posts, req.query.post) }) }))));
+app.post('/api/folders', auth, async (req, res) => {
+  const name = String(req.body.name || '').trim().slice(0, 30);
+  if (!name) return res.status(400).json({ error: 'Give the folder a name' });
+  if ((await Folder.countDocuments({ user: req.me._id })) >= 25) return res.status(400).json({ error: 'You can have up to 25 folders' });
+  res.json({ id: (await Folder.create({ user: req.me._id, name })).id });
+});
+app.patch('/api/folders/:id', auth, async (req, res) => {
+  const name = String(req.body.name || '').trim().slice(0, 30);
+  if (!name || !OID.test(req.params.id)) return res.status(400).json({ error: 'Give the folder a name' });
+  await Folder.updateOne({ _id: req.params.id, user: req.me._id }, { name }); res.json({ ok: true });
+});
+app.delete('/api/folders/:id', auth, async (req, res) => { if (OID.test(req.params.id)) await Folder.deleteOne({ _id: req.params.id, user: req.me._id }); res.json({ ok: true }); });
+app.post('/api/folders/:id/posts/:pid', auth, async (req, res) => { // toggle; adding also bookmarks the post
+  if (!OID.test(req.params.id) || !OID.test(req.params.pid)) return res.sendStatus(404);
+  const f = await Folder.findOne({ _id: req.params.id, user: req.me._id });
+  if (!f || !(await Post.exists({ _id: req.params.pid }))) return res.sendStatus(404);
+  const on = !has(f.posts, req.params.pid);
+  await Folder.updateOne({ _id: f._id }, on ? { $addToSet: { posts: req.params.pid } } : { $pull: { posts: req.params.pid } });
+  if (on && !has(req.me.bookmarks, req.params.pid)) { await User.updateOne({ _id: req.me._id }, { $addToSet: { bookmarks: req.params.pid } }); await Post.updateOne({ _id: req.params.pid }, { $inc: { saves: 1 } }); }
+  res.json({ in: on });
+});
+
+// ---- Community Notes (simplified: needs enough ratings and a high helpful share; no bridging algorithm) ----
+const NOTE_MIN = +process.env.NOTES_MIN_RATINGS || 5, NOTE_MIN_AGE = +process.env.NOTES_MIN_AGE_DAYS || 0;
+const noteScore = (n) => { const t = n.ratings.length, sc = t ? n.ratings.reduce((a, r) => a + r.v / 2, 0) / t : 0; return { total: t, score: sc, status: t >= NOTE_MIN && sc >= 0.7 ? 'helpful' : t >= NOTE_MIN && sc < 0.4 ? 'unhelpful' : 'proposed' }; };
+async function refreshNote(postId) { // keeps the note shown on the post in sync with the best helpful note
+  const best = (await Note.find({ post: postId })).map((n) => ({ n, ...noteScore(n) })).filter((x) => x.status === 'helpful').sort((a, b) => b.score - a.score || b.total - a.total)[0];
+  const p = await Post.findById(postId).select('note author'); if (!p) return;
+  if (best) { if (p.note?.id !== best.n.id) { await Post.updateOne({ _id: p._id }, { note: { id: best.n.id, text: best.n.text, source: best.n.source || '' } }); await notify(p.author, best.n.author, 'note', p._id); } }
+  else if (p.note?.id) await Post.updateOne({ _id: p._id }, { $unset: { note: 1 } });
+}
+async function notePost(req, res) { // the post a note belongs to, only if the viewer can see it
+  const p = OID.test(req.params.id) ? await Post.findById(req.params.id).populate('author') : null;
+  const vis = p && !(p.visibleAt && p.visibleAt > new Date()) && !(p.author?.protected && oid(p.author) !== req.me?.id && !has(req.me?.following || [], oid(p.author))) && !(p.community && (await hiddenCommunities(req.me)).includes(oid(p.community)));
+  if (!vis) { res.sendStatus(404); return null; }
+  return p;
+}
+app.get('/api/posts/:id/notes', async (req, res) => {
+  const p = await notePost(req, res); if (!p) return;
+  const ns = await Note.find({ post: p._id }).sort('-createdAt').limit(30);
+  res.json({ notes: ns.map((n) => ({ n, ...noteScore(n) })).filter((x) => x.status !== 'unhelpful' || oid(x.n.author) === req.me?.id).map(({ n, total, status }) => ({ id: n.id, text: n.text, source: n.source || '', status, total, mine: oid(n.author) === req.me?.id, myRating: req.me ? (n.ratings.find((r) => String(r.u) === req.me.id)?.v ?? -1) : -1, at: n.createdAt })) });
+});
+app.post('/api/posts/:id/notes', auth, async (req, res) => {
+  const p = await notePost(req, res); if (!p) return;
+  const text = String(req.body.text || '').trim().slice(0, 500);
+  if (text.length < 20) return res.status(400).json({ error: 'Explain the missing context in at least 20 characters' });
+  let source = String(req.body.source || '').trim().slice(0, 300);
+  if (source) { try { const u = new URL(/^https?:\/\//i.test(source) ? source : 'https://' + source); if (!/^https?:$/.test(u.protocol) || !u.hostname.includes('.')) throw 0; source = u.href; } catch { return res.status(400).json({ error: 'That source link doesn’t look right' }); } }
+  if (oid(p.author) === req.me.id) return res.status(400).json({ error: 'You can’t add a note to your own post' });
+  if (Date.now() - req.me.createdAt < NOTE_MIN_AGE * 864e5) return res.status(403).json({ error: `Accounts need to be ${NOTE_MIN_AGE} days old to write notes` });
+  if (await Note.exists({ post: p._id, author: req.me._id })) return res.status(409).json({ error: 'You already added a note to this post' });
+  await Note.create({ post: p._id, author: req.me._id, text, source }); res.json({ ok: true });
+});
+app.post('/api/notes/:id/rate', auth, async (req, res) => {
+  const n = OID.test(req.params.id) ? await Note.findById(req.params.id) : null, v = parseInt(req.body.v);
+  if (!n || ![0, 1, 2].includes(v)) return res.sendStatus(404);
+  if (oid(n.author) === req.me.id) return res.status(400).json({ error: 'You can’t rate your own note' });
+  req.params.id = String(n.post); if (!(await notePost(req, res))) return;
+  const r = await Note.updateOne({ _id: n._id, 'ratings.u': req.me._id }, { $set: { 'ratings.$.v': v } });
+  if (!r.matchedCount) await Note.updateOne({ _id: n._id }, { $push: { ratings: { u: req.me._id, v } } });
+  await refreshNote(n.post); res.json({ ok: true });
+});
+app.delete('/api/notes/:id', auth, async (req, res) => {
+  const n = OID.test(req.params.id) ? await Note.findOne({ _id: req.params.id, ...(req.me.admin ? {} : { author: req.me._id }) }) : null;
+  if (!n) return res.sendStatus(404);
+  await Note.deleteOne({ _id: n._id }); await refreshNote(n.post); res.json({ ok: true });
 });
 
 app.use(express.static(path.join(__dirname, 'public')));

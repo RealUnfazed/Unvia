@@ -13,6 +13,7 @@ Thanks for helping improve Unvia! Please read our [Code of Conduct](CODE_OF_COND
 - Create a branch from `main`: `feat/short-name` or `fix/short-name`.
 - Keep pull requests focused on one change and describe what and why.
 - Match the existing style: 2-space indent, single quotes, no unused code.
+- Run `npm test` (Node only, no database needed) and add a case in `tests/` for new behavior.
 - Test your change manually in the browser. Include steps to reproduce for bug fixes and screenshots or a short clip for UI changes.
 - Never commit secrets, `.env` files or API keys.
 - Changes touching auth, uploads, reports or the admin panel get extra review; please explain the security impact.

@@ -10,7 +10,8 @@
     "desktop:build": "electron-builder",
     "cap:add": "cap add android && cap add ios",
     "android": "cap sync android && cap open android",
-    "ios": "cap sync ios && cap open ios"
+    "ios": "cap sync ios && cap open ios",
+    "test": "node tests/run.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

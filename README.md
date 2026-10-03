@@ -12,6 +12,7 @@ Created by **Alireza Asakareh (RealUnfazed)** · [MIT License](LICENSE)
 - **Notifications:** likes, reposts, quotes, replies, mentions and follows, with a live unread badge
 - **Direct messages:** 1:1 and group chats, photos, read receipts ("Seen"), delete your own messages, unread badge, and message requests (a chat from someone you don't follow waits in Requests until you accept)
 - **Accounts & safety:** password reset and email verification by email, two-factor login (authenticator app + backup codes), log out of all devices, account lockout after repeated failures, protected accounts with follow requests, muted words, blocked/muted account lists, dim and light themes, profile location / website / birthday
+- **Platform:** Explore (trending posts, hashtags, topics), custom Lists (public or private, subscribe, pin to Home), communities (open or approval-only, rules, moderators, join requests), bookmark folders, Community Notes, per-post and account analytics with view counts
 - **Block & mute:** hide people from your feeds, search and notifications; blocking also removes follows both ways
 - **Badges:** Verified (blue), Business (gold), Government (grey) and Owner (gradient)
 - **Search & trends:** people, posts and hashtags, plus trending hashtags
@@ -37,6 +38,8 @@ npm run dev               # http://localhost:3000
 | `OWNER_USERNAME` | Account that becomes admin with the Owner badge (optional) |
 | `RESEND_API_KEY` | Sends password-reset and email-verification mail through [Resend](https://resend.com) (optional, see notes) |
 | `MAIL_FROM` | Sender, e.g. `Unvia <hello@yourdomain.com>` (defaults to Resend's test sender) |
+| `NOTES_MIN_RATINGS` | Ratings a Community Note needs before it can be shown (default 5) |
+| `NOTES_MIN_AGE_DAYS` | Minimum account age to write notes (default 0) |
 | `APP_URL` | Public URL used in email links, e.g. `https://unvia.example.com` (defaults to the request host) |
 
 The **first account registered** automatically becomes the platform owner and admin.
@@ -73,6 +76,12 @@ capacitor.config.json  Mobile shell
 - **Two-factor:** TOTP is implemented with Node's built-in crypto (verified against the RFC 6238 test vectors). The shared secret is stored in the database unencrypted, so restrict database access.
 - **Protected accounts:** posts, replies, media and follower lists are visible only to approved followers. Their posts can't be reposted or quoted. Existing followers are kept when you turn protection on, and turning it off approves everyone waiting. Quotes and reposts made before protection was enabled stay visible.
 - **Themes** are saved per device (browser), not per account.
+- **Topics** are assigned by keyword matching when a post is written (up to 3 per post); there is no machine learning. Posts from before this existed need Admin → Maintenance → "Tag older posts with topics" once.
+- **Explore** ranks posts from the last 3 days by likes, reposts and replies with a time decay, and includes the owner's Growth-tool boosts. Results are cached for 45 seconds. Posts from protected accounts and private communities are left out.
+- **Community Notes is simplified:** a note is shown on a post once it has enough ratings and a high helpful share (default 5 ratings, 70%). X's real system also requires agreement between people who usually disagree; this one doesn't, so treat it as a lightweight version.
+- **Views** count a post once per viewer session after it stays mostly on screen for a moment; authors' own views don't count. The endpoint has no rate limit yet (arrives with the production phase), so counts can be inflated by scripts.
+- **Communities:** open ones are public. Approval-only ones show their posts only to members, and their posts are hidden from search, Explore and trends. Posts made in a community stay in it.
+- **Lists:** private lists are visible only to you. Subscribers of a list you make private are removed.
 - Messages are not end-to-end encrypted. They update by polling (open chat every 2.5 s, inbox every 5 s, badge every 10 s) because Vercel functions can't hold WebSocket connections.
 - Message requests: a new 1:1 chat goes to the recipient's Requests unless they follow the sender. Until accepted, the sender can send 3 messages. Replying accepts. Groups can only include people you follow or who follow you, and members can't be added after creation yet.
 - Scheduled posts are hidden by a time check on every read, so no background job or cron is needed. Drafts save text only (not photos or polls).
@@ -88,9 +97,17 @@ capacitor.config.json  Mobile shell
 | 2. Rich posting | Multi-image posts (up to 4), polls, edit post, emoji picker, @mention autocomplete, drafts and scheduled posts, reply controls, link previews | Done |
 | 3. Messaging | Direct messages (1:1 and group), read receipts, message requests | Done |
 | 4. Accounts & safety | Password reset, email verification, protected accounts, 2FA, dim/light themes, muted words, profile extras (location, website, birthday) | Done |
-| 5. Platform | Lists, Explore and topics, post analytics, Community Notes, communities, bookmark folders | Next |
-| 6. Production | Rate limiting, Tailwind build (no CDN), moderation tools, push notifications for mobile | Planned |
+| 5. Platform | Lists, Explore and topics, post analytics, Community Notes, communities, bookmark folders | Done |
+| 6. Production | Rate limiting, Tailwind build (no CDN), moderation tools, push notifications for mobile | Next |
 | Later / needs external services | Spaces (live audio needs WebRTC infrastructure), video posts (needs video hosting), Premium and payouts (needs a payment provider) | Backlog |
+
+## Testing
+
+```bash
+npm test
+```
+
+Needs only Node 18+ (no installs, no database). It runs three groups: the server loads without start-up errors, 69 checks on core logic (two-factor codes against the RFC test vectors, the link-preview safety check, message rules, topic tagging, note thresholds, muted words, number formatting), and the browser app run against a fake page and fake API, rendering every screen and firing the click and form handlers.
 
 ## Contributing & community
 
