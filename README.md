@@ -105,6 +105,7 @@ capacitor.config.json  Mobile shell
 
 ## Production notes
 
+- **Vercel:** keep `vercel.json` as shipped (a build command and a header for the service worker). Don't add `outputDirectory` or `/api` rewrites: Vercel detects the Express server (`server.js`) on its own, serves `public/` as static files, and sends every other request to Express.
 - **Stylesheet:** `npm run build:css` compiles Tailwind v3 to `public/tailwind.css` (Vercel runs it on deploy; `npm run dev`, `android` and `ios` run it for you). If the file is missing the page falls back to the Tailwind CDN, so nothing breaks, but build it for production and for the native apps.
 - **Secrets:** in production (`VERCEL_ENV` or `NODE_ENV` = production) the server refuses to start unless `JWT_SECRET` is 24+ characters.
 - **Rate limits** (counted in MongoDB, so they hold across serverless instances; a 429 says how long to wait): login 20 per 10 min per IP, sign-up 5 per hour, password reset 10 per hour, posts 40 per 10 min per user, likes/reposts 300 per 10 min, messages 60 per minute, search 90 per minute per IP, data export 3 per hour. If the limiter's own database call fails, requests are allowed rather than the site going down. Behind your own proxy, make sure it sets `x-forwarded-for` or `x-real-ip` honestly.

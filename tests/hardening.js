@@ -72,7 +72,9 @@ const eq = (n, g, e) => { total++; if (JSON.stringify(g) !== JSON.stringify(e)) 
   eq('css build script', /tailwindcss .*src\/input\.css.*public\/tailwind\.css.*--minify/.test(pkg.scripts['build:css']), true);
   eq('tailwind pinned to v3 (matches the old CDN look)', /^~?3\.4/.test(pkg.devDependencies.tailwindcss), true); eq('web-push is optional', !!pkg.optionalDependencies['web-push'] && !pkg.dependencies['web-push'], true);
   eq('native builds compile css first', [pkg.scripts.android, pkg.scripts.ios].every((s) => s.startsWith('npm run build:css')), true);
-  eq('vercel builds css', [vc.buildCommand, vc.outputDirectory], ['npm run build:css', 'public']); eq('service worker is never cached', JSON.stringify(vc.headers).includes('no-cache') && JSON.stringify(vc.headers).includes('/sw.js'), true);
+  eq('vercel builds css', vc.buildCommand, 'npm run build:css');
+  // Vercel treats this as an Express backend: an outputDirectory makes it hunt for a server file inside public/ (build error), and an /api rewrite would send every API call to the path /api.
+  eq('vercel.json has no outputDirectory and no rewrites', [vc.outputDirectory, vc.rewrites], [undefined, undefined]); eq('service worker is never cached', JSON.stringify(vc.headers).includes('no-cache') && JSON.stringify(vc.headers).includes('/sw.js'), true);
   eq('tailwind scans the app html', read('tailwind.config.js').includes("./public/**/*.html"), true); eq('css entry has the three layers', ['base', 'components', 'utilities'].every((l) => read('src/input.css').includes(`@tailwind ${l};`)), true);
   eq('compiled css is git-ignored (built on deploy)', read('.gitignore').includes('public/tailwind.css'), true);
   eq('html uses the compiled css with a CDN fallback', html.includes('href="/tailwind.css"') && html.includes("addEventListener('error'") && html.includes('cdn.tailwindcss.com'), true);
