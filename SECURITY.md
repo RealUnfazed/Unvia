@@ -26,9 +26,11 @@ If you deploy Unvia yourself:
 - Keep `.env` out of version control and rotate any key that leaks.
 - Restrict MongoDB Atlas network access and use a least-privilege database user.
 - Keep dependencies updated (`npm audit`).
+- Generate push keys with `npm run vapid` and keep `VAPID_PRIVATE_KEY` secret like any other key.
+- Moderator accounts can suspend users and delete posts; only give the role to people you trust.
 - Set `APP_URL` so reset and verification links point at your real domain, and verify a sending domain with your email provider.
 - Changing `JWT_SECRET` signs everyone out and invalidates outstanding reset and verification links.
 - Two-factor secrets are stored in the database as-is: keep database credentials private and use a least-privilege database user.
-- Add rate limiting and a proper Tailwind build (no CDN) before running a public production service.
+- Rate limiting, security headers, a compiled Tailwind build and a production secret check are built in (README → Production notes). Serve only over HTTPS.
 
 Please act in good faith: don't access other users' data, disrupt the service, or run automated attacks against live deployments you don't own.

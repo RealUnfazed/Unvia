@@ -2,7 +2,7 @@
 const fs = require('fs'), path = require('path'), os = require('os'), { spawnSync } = require('child_process');
 const nm = path.join(os.tmpdir(), 'unvia-stubs', 'node_modules');
 const mod = (name, code) => { fs.mkdirSync(path.join(nm, name), { recursive: true }); fs.writeFileSync(path.join(nm, name, 'index.js'), code); };
-mod('express', `const routes=[];function express(){const app=()=>{};for(const m of ['get','post','put','patch','delete','use'])app[m]=(...a)=>{routes.push(m);return app};app.listen=()=>{};return app}express.json=()=>()=>{};express.static=()=>()=>{};express._routes=routes;module.exports=express;`);
+mod('express', `const routes=[];function express(){const app=()=>{};for(const m of ['get','post','put','patch','delete','use','disable'])app[m]=(...a)=>{routes.push(m);return app};app.listen=()=>{};return app}express.json=()=>()=>{};express.static=()=>()=>{};express._routes=routes;module.exports=express;`);
 mod('cors', 'module.exports=()=>()=>{};'); mod('dotenv', 'module.exports={config(){}};');
 mod('bcryptjs', 'module.exports={hash:async()=>"h",compare:async()=>true};'); mod('jsonwebtoken', 'module.exports={sign:()=>"t",verify:()=>({})};');
 mod('multer', 'const mw=()=>()=>{};function multer(){return{single:mw,array:mw,fields:mw}}multer.memoryStorage=()=>({});module.exports=multer;');
@@ -12,3 +12,8 @@ const r = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', env: { .
 const n = parseInt((r.stdout || '').trim());
 if (r.status === 0 && n > 100) console.log(`server.js loads cleanly (${n} routes registered)`);
 else { console.log('FAIL: server.js did not load\n' + (r.stderr || r.stdout).split('\n').slice(0, 6).join('\n')); process.exit(1); }
+// Production must fail closed: no real JWT secret means anyone could forge logins, so the server must refuse to start.
+const prod = (secret) => spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', env: { ...process.env, NODE_PATH: nm, NODE_ENV: 'production', JWT_SECRET: secret } });
+const weak = prod(''), ok = prod('x'.repeat(40));
+if (weak.status !== 0 && /JWT_SECRET/.test(weak.stderr) && ok.status === 0) console.log('production refuses a missing/default JWT secret and accepts a long one');
+else { console.log('FAIL: production secret check', weak.status, ok.status, (weak.stderr || '').split('\n')[0]); process.exit(1); }

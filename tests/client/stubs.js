@@ -45,7 +45,7 @@ globalThis.MOCK = []; globalThis.CALLS = [];
 globalThis.fetch = async (url, o = {}) => {
   const u = String(url).replace(/^https?:\/\/[^/]+/, ''), method = (o.method || 'GET').toUpperCase();
   CALLS.push(method + ' ' + u);
-  for (const [m, re, data] of MOCK) if ((m === '*' || m === method) && re.test(u)) { const d = typeof data === 'function' ? data(u, o) : data; return { ok: true, status: 200, json: async () => d }; }
-  return { ok: true, status: 200, json: async () => ({}) };
+  for (const [m, re, data] of MOCK) if ((m === '*' || m === method) && re.test(u)) { const d = typeof data === 'function' ? data(u, o) : data; return { ok: true, status: 200, json: async () => d, blob: async () => new Blob(['{}']) }; }
+  return { ok: true, status: 200, json: async () => ({}), blob: async () => new Blob(['{}']) };
 };
 process.on('unhandledRejection', (e) => { console.log('UNHANDLED:', e.message); console.log('last calls:', CALLS.slice(-6)); console.log('hash:', location.hash); process.exit(3); });

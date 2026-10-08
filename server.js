@@ -4,10 +4,16 @@ const jwt = require('jsonwebtoken'), multer = require('multer'), path = require(
 const dns = require('dns').promises, net = require('net'), crypto = require('crypto');
 
 const { MONGODB_URI, JWT_SECRET = 'dev-secret', POSTFILE_API_KEY } = process.env;
+let webpush; try { webpush = require('web-push'); } catch { /* optional: push stays off without it */ }
+const PUSH = !!(webpush && process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+if (PUSH) webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@example.com', process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
+const PROD = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+// A guessable secret lets anyone forge login tokens, so production refuses to start without a real one.
+if (PROD && (JWT_SECRET === 'dev-secret' || String(JWT_SECRET).length < 24)) throw new Error('JWT_SECRET must be set to a long random value (24+ characters) in production.');
 const PF = 'https://postfile.net/v1', pfH = { 'X-API-Key': POSTFILE_API_KEY };
 
 let conn; // cached so serverless invocations reuse the connection
-const db = () => (conn ||= mongoose.connect(MONGODB_URI));
+const db = () => (conn ||= (() => { if (!MONGODB_URI) throw new Error('MONGODB_URI is not set'); return mongoose.connect(MONGODB_URI); })());
 const Id = mongoose.Schema.Types.ObjectId;
 const M = (n, s) => mongoose.models[n] || mongoose.model(n, new mongoose.Schema(s, { timestamps: true }));
 const User = M('User', {
@@ -16,6 +22,7 @@ const User = M('User', {
   following: [Id], bookmarks: [Id], blocked: [Id], muted: [Id], pinned: Id, pinnedLists: [Id], protected: Boolean, followRequests: [Id], mutedWords: [String], location: String, website: String, birthday: Date, birthdayVisible: String,
   email: { type: String, lowercase: true, trim: true, unique: true, sparse: true }, emailVerified: Boolean, pendingEmail: String, resetAt: Date,
   twofa: { secret: String, enabled: Boolean, backup: [String] }, sv: { type: Number, default: 0 }, fails: Number, lockUntil: Date, avatar: String, banner: String, badge: { type: String, default: '' }, admin: Boolean, banned: Boolean,
+  mod: Boolean, suspendedUntil: Date, suspendReason: String, pushLevel: String,
   ghost: Boolean, fake: mongoose.Schema.Types.Mixed, // { target, mode: 'instant'|'gradual', startAt, endAt, startVal }
 });
 const Post = M('Post', {
@@ -25,7 +32,7 @@ const Post = M('Post', {
   images: [{ _id: false, url: String, fileId: String }],
   poll: { options: [{ _id: false, text: String, votes: [Id] }], endsAt: Date },
   preview: { url: String, title: String, description: String, image: String, site: String },
-  topics: { type: [String], index: true }, community: { type: Id, ref: 'Community', index: true }, views: { type: Number, default: 0 }, note: mongoose.Schema.Types.Mixed,
+  topics: { type: [String], index: true }, community: { type: Id, ref: 'Community', index: true }, views: { type: Number, default: 0 }, sensitive: Boolean, note: mongoose.Schema.Types.Mixed,
   fake: { likes: mongoose.Schema.Types.Mixed, reposts: mongoose.Schema.Types.Mixed, saves: mongoose.Schema.Types.Mixed, views: mongoose.Schema.Types.Mixed },
 });
 
@@ -43,14 +50,28 @@ const Note = M('Note', { post: { type: Id, index: true }, author: { type: Id, re
 const DailySchema = new mongoose.Schema({ post: Id, author: { type: Id, index: true }, day: String, n: { type: Number, default: 0 } });
 DailySchema.index({ post: 1, day: 1 }, { unique: true });
 const Daily = mongoose.models.Daily || mongoose.model('Daily', DailySchema);
+const ttl = (def, field, secs) => { const sc = new mongoose.Schema(def); sc.index({ [field]: 1 }, { expireAfterSeconds: secs }); return sc; };
+const Rate = mongoose.models.Rate || mongoose.model('Rate', ttl({ _id: String, n: Number, exp: Date }, 'exp', 0));
+const ViewSeen = mongoose.models.ViewSeen || mongoose.model('ViewSeen', ttl({ _id: String, at: Date }, 'at', 3 * 86400));
+const ModLog = M('ModLog', { mod: { type: Id, ref: 'User' }, action: String, user: { type: Id, ref: 'User' }, post: Id, note: String });
+const Filter = M('Filter', { word: { type: String, unique: true } });
+const PushSub = M('PushSub', { user: { type: Id, index: true }, endpoint: { type: String, unique: true }, keys: { p256dh: String, auth: String }, ua: String });
 const Msg = M('Msg', { conv: { type: Id, index: true }, from: { type: Id, ref: 'User' }, text: String, image: { url: String, fileId: String }, deleted: Boolean });
 const has = (a, id) => a.some((x) => String(x) === String(id));
 // Users whose content I shouldn't see: ones I blocked or muted, plus ones who blocked me.
 const hiddenFor = async (me) => (me ? [...new Set([...me.blocked, ...me.muted, ...(await User.distinct('_id', { blocked: me._id }))].map(String))] : []);
+let modIds = { at: 0, ids: [] };
+const moderated = async () => { if (Date.now() - modIds.at > 30000) modIds = { at: Date.now(), ids: (await User.distinct('_id', { $or: [{ banned: true }, { suspendedUntil: { $gt: new Date() } }] })).map(String) }; return modIds.ids; };
+let filt = { at: 0, re: null };
+const wordRe = (words) => (words.length ? new RegExp('(^|[^\\w])(' + words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')(?![\\w])', 'i') : null);
+async function blockedText(text) { // owner-managed list of words that can't be posted
+  if (Date.now() - filt.at > 60000) filt = { at: Date.now(), re: wordRe((await Filter.find().limit(500)).map((f) => f.word)) };
+  return !!(filt.re && filt.re.test(text || ''));
+}
 const hiddenPosts = async (me) => {
   const base = await hiddenFor(me);
   const prot = await User.distinct('_id', { protected: true, ...(me ? { _id: { $nin: [me._id, ...me.following] } } : {}) });
-  return [...new Set([...base, ...prot.map(String)])];
+  return [...new Set([...base, ...prot.map(String), ...(await moderated())])];
 };
 const TOPICS = [
   { slug: 'technology', name: 'Technology', emoji: '💻', kw: 'tech technology software ai ml coding code programming javascript typescript python rust developer devs api startup startups app apps gadget gadgets iphone android linux cybersecurity robot robots chip chips gpu cloud opensource github openai chatgpt' },
@@ -79,7 +100,26 @@ const isMember = (cid, me) => Community.exists({ _id: cid, members: me._id });
 // One notification per (recipient, sender, type, post); upsert makes repeat likes/follows idempotent.
 async function notify(to, from, type, post, at) {
   if (!to || String(to) === String(from)) return;
-  await Notif.updateOne({ to, from, type, post: post || null }, { $setOnInsert: { read: false, ...(at && { visibleAt: at }) } }, { upsert: true });
+  const r = await Notif.updateOne({ to, from, type, post: post || null }, { $setOnInsert: { read: false, ...(at && { visibleAt: at }) } }, { upsert: true });
+  if (PUSH && r.upsertedCount && !at) await Promise.race([pushNotif(to, from, type, post).catch(() => {}), new Promise((ok) => setTimeout(ok, 2500))]); // a push per new notification, never for repeats or scheduled posts
+}
+const IMPORTANT = new Set(['reply', 'mention', 'quote', 'request', 'accepted', 'note', 'dm']);
+const pushAllowed = (level, type) => (level === 'important' ? IMPORTANT.has(type) : true);
+const snip = (t, n = 100) => { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+const pushText = (type, name, text) => ({ like: [`${name} liked your post`, snip(text)], repost: [`${name} reposted your post`, snip(text)], reply: [`${name} replied to you`, snip(text)], quote: [`${name} quoted your post`, snip(text)], mention: [`${name} mentioned you`, snip(text)],
+  follow: [`${name} followed you`, ''], request: [`${name} wants to follow you`, 'Open to approve or deny'], accepted: [`${name} accepted your follow request`, ''], note: ['Readers added context to your post', snip(text)] })[type];
+async function pushTo(userId, payload) {
+  if (!PUSH) return;
+  await Promise.allSettled((await PushSub.find({ user: userId }).limit(10)).map(async (sub) => {
+    try { await webpush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys }, JSON.stringify(payload), { TTL: 3600, timeout: 4000 }); }
+    catch (e) { if (e.statusCode === 404 || e.statusCode === 410) await PushSub.deleteOne({ _id: sub._id }); } // device unsubscribed
+  }));
+}
+async function pushNotif(to, from, type, postId) {
+  const [rcpt, sender, post] = await Promise.all([User.findById(to).select('muted blocked pushLevel'), type === 'note' ? null : User.findById(from).select('name username'), postId ? Post.findById(postId).select('text') : null]);
+  if (!rcpt || !pushAllowed(rcpt.pushLevel || 'all', type) || has(rcpt.muted, from) || has(rcpt.blocked, from)) return;
+  const t = pushText(type, sender?.name || 'Someone', post?.text); if (!t) return;
+  await pushTo(to, { title: t[0], body: t[1], url: type === 'request' ? '/#/follow-requests' : postId ? '/#/p/' + postId : sender ? '/#/u/' + sender.username : '/#/notifications', tag: `${type}:${postId || from}` });
 }
 const unnotify = (to, from, type, post) => Notif.deleteOne({ to, from, type, post: post || null });
 // Interpolates a fake count between startVal and target as `now` moves from startAt to endAt; no background job needed.
@@ -93,7 +133,7 @@ function fakeVal(f) {
 }
 // Posts scheduled to appear later (fake replies spread over time) are hidden from lists until their moment arrives.
 const visible = () => ({ $or: [{ visibleAt: null }, { visibleAt: { $exists: false } }, { visibleAt: { $lte: new Date() } }] });
-const pub = (u) => ({ id: u.id, username: u.username, name: u.name, bio: u.bio, avatar: u.avatar, banner: u.banner, badge: u.badge, admin: !!u.admin, pinned: u.pinned ? String(u.pinned) : null, protected: !!u.protected });
+const pub = (u) => ({ id: u.id, username: u.username, name: u.name, bio: u.bio, avatar: u.avatar, banner: u.banner, badge: u.badge, admin: !!u.admin, mod: !!u.mod, pinned: u.pinned ? String(u.pinned) : null, protected: !!u.protected });
 const pop = (q) => q.populate('author').populate({ path: 'repostOf', populate: { path: 'author' } }).populate({ path: 'quoteOf', populate: { path: 'author' } }).populate({ path: 'community', select: 'name' });
 const replyMsg = (o) => (o.replyLimit === 'following' ? `Only accounts @${o.author?.username} follows can reply` : 'Only people mentioned in this post can reply');
 const canReplyTo = (o, me) => {
@@ -112,7 +152,7 @@ const shape = (p, me) => {
   return {
     id: o.id, text: o.text, media: o.media?.url, images: (o.images?.length ? o.images : o.media?.url ? [o.media] : []).map((i) => i.url), at: o.createdAt, author: o.author && pub(o.author),
     views: (o.views || 0) + fakeVal(o.fake?.views), community: o.community?.name ? { id: String(o.community._id), name: o.community.name } : null, note: o.note?.id ? { text: o.note.text, source: o.note.source || '' } : null,
-    edited: !!o.editedAt, replyLimit: o.replyLimit || 'all', canReply: canReplyTo(o, me), poll: pollShape(o, me), scheduled: !!(o.scheduled && o.visibleAt && o.visibleAt > new Date()),
+    sensitive: !!o.sensitive, edited: !!o.editedAt, replyLimit: o.replyLimit || 'all', canReply: canReplyTo(o, me), poll: pollShape(o, me), scheduled: !!(o.scheduled && o.visibleAt && o.visibleAt > new Date()),
     preview: o.preview?.title ? { url: o.preview.url, title: o.preview.title, description: o.preview.description, image: o.preview.image, site: o.preview.site } : null,
     likes: o.likes.length + fakeVal(o.fake?.likes), liked: !!me && has(o.likes, me.id),
     reposts: o.reposts.length + (o.quotes || 0) + fakeVal(o.fake?.reposts), reposted: !!me && has(o.reposts, me.id),
@@ -123,6 +163,12 @@ const shape = (p, me) => {
 };
 
 const app = express();
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.set({ 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'SAMEORIGIN', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    'Content-Security-Policy': "frame-ancestors 'self'; base-uri 'self'; object-src 'none'", ...(PROD && { 'Strict-Transport-Security': 'max-age=15552000; includeSubDomains' }) });
+  next();
+});
 app.use(cors(), express.json());
 app.use('/api', async (req, _s, next) => {
   await db();
@@ -131,11 +177,55 @@ app.use('/api', async (req, _s, next) => {
   if (req.me && ow && !req.me.admin && req.me.username === ow) { req.me.admin = true; req.me.badge = 'owner'; await req.me.save(); }
   next();
 });
-const auth = (req, res, next) => (req.me && !req.me.banned ? next() : res.status(req.me ? 403 : 401).json({ error: req.me ? 'Account suspended' : 'Log in first' }));
+const isSuspended = (u, now = new Date()) => !!(u.banned || (u.suspendedUntil && u.suspendedUntil > now));
+const auth = (req, res, next) => {
+  if (!req.me) return res.status(401).json({ error: 'Log in first' });
+  if (req.me.banned) return res.status(403).json({ error: 'Your account has been suspended.' });
+  if (req.me.suspendedUntil > new Date()) return res.status(403).json({ error: `Your account is suspended until ${req.me.suspendedUntil.toUTCString()}.` });
+  next();
+};
+
+// ---- rate limiting ----
+// Counters live in MongoDB (fixed windows, auto-expiring) because serverless instances share no memory. A cheap in-memory
+// guard per instance absorbs bursts first. If the counter store fails, requests are allowed rather than taking the site down.
+const clientIp = (req) => String(req.headers['x-vercel-forwarded-for'] || req.headers['x-real-ip'] || String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown').slice(0, 64);
+async function hit(store, rule, key, now = Date.now()) {
+  const win = Math.floor(now / (rule.sec * 1000)), end = (win + 1) * rule.sec * 1000, n = await store(`${rule.name}:${key}:${win}`, new Date(end + 60000));
+  return { ok: n <= rule.max, retry: Math.max(1, Math.ceil((end - now) / 1000)), n };
+}
+const dbStore = async (id, exp) => {
+  for (let i = 0; i < 2; i++) { try { return (await Rate.findOneAndUpdate({ _id: id }, { $inc: { n: 1 }, $setOnInsert: { exp } }, { upsert: true, new: true })).n; } catch (e) { if (e.code !== 11000) throw e; } }
+  return 1;
+};
+const RULES = [ // [method, path, name, max requests, window seconds, counted per ip|user]
+  ['POST', /^\/api\/auth\/login$/, 'login', 20, 600, 'ip'], ['POST', /^\/api\/auth\/2fa$/, 'tfa', 20, 600, 'ip'], ['POST', /^\/api\/auth\/register$/, 'register', 5, 3600, 'ip'],
+  ['POST', /^\/api\/auth\/(forgot|reset)$/, 'recover', 10, 3600, 'ip'], ['POST', /^\/api\/me\/(password|email)$/, 'acct', 10, 3600, 'user'], ['DELETE', /^\/api\/me$/, 'acctdel', 5, 3600, 'user'],
+  ['PATCH', /^\/api\/me$/, 'profile', 20, 3600, 'user'], ['GET', /^\/api\/me\/export$/, 'export', 3, 3600, 'user'],
+  ['POST', /^\/api\/posts$/, 'post', 40, 600, 'user'], ['POST', /^\/api\/posts\/[a-f0-9]{24}\/(like|repost|bookmark|vote)$/, 'react', 300, 600, 'user'],
+  ['POST', /^\/api\/users\/[^/]+\/(follow|block|mute)$/, 'follow', 100, 600, 'user'], ['POST', /^\/api\/posts\/[a-f0-9]{24}\/notes$/, 'note', 20, 3600, 'user'], ['POST', /^\/api\/notes\/[a-f0-9]{24}\/rate$/, 'noterate', 200, 3600, 'user'],
+  ['POST', /^\/api\/conversations\/[a-f0-9]{24}\/messages$/, 'dm', 60, 60, 'user'], ['POST', /^\/api\/conversations$/, 'newdm', 20, 3600, 'user'], ['POST', /^\/api\/report$/, 'report', 20, 3600, 'user'],
+  ['POST', /^\/api\/(communities|lists)$/, 'create', 10, 3600, 'user'], ['POST', /^\/api\/views$/, 'views', 120, 60, 'ip'],
+  ['GET', /^\/api\/(search|mentions|explore|gifs)/, 'search', 90, 60, 'ip'], ['POST', /^\/api\/push\/test$/, 'pushtest', 5, 600, 'user'],
+];
+const mem = new Map();
+const memAllow = (ip, max = 900) => { const now = Date.now(), e = mem.get(ip); if (!e || now - e.t > 60000) { if (mem.size > 5000) mem.clear(); mem.set(ip, { n: 1, t: now }); return true; } return ++e.n <= max; };
+const tooMany = (res, s) => res.set('Retry-After', String(s)).status(429).json({ error: `Too many requests. Try again in ${s < 90 ? s + ' seconds' : Math.ceil(s / 60) + ' minutes'}.` });
+app.use('/api', async (req, res, next) => {
+  try {
+    const ip = clientIp(req), path = req.originalUrl.split('?')[0];
+    if (!memAllow(ip)) return tooMany(res, 30);
+    for (const [m, re, name, max, sec, by] of RULES) {
+      if (m !== req.method || !re.test(path)) continue;
+      const r = await hit(dbStore, { name, max, sec }, by === 'user' && req.me ? req.me.id : ip);
+      if (!r.ok) return tooMany(res, r.retry);
+    }
+  } catch { /* never let the limiter itself break the site */ }
+  next();
+});
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 } });
 // `sv` (session version) is bumped on password change / reset / 2FA changes / "log out everywhere", which invalidates older tokens.
 const sign = (u) => jwt.sign({ id: u.id, sv: u.sv || 0 }, JWT_SECRET, { expiresIn: '30d' });
-const mine = (u) => ({ ...pub(u), mutedWords: u.mutedWords || [], email: u.email || null, emailVerified: !!u.emailVerified, pendingEmail: u.pendingEmail || null, twofa: !!u.twofa?.enabled,
+const mine = (u) => ({ ...pub(u), mutedWords: u.mutedWords || [], pushLevel: u.pushLevel || 'all', email: u.email || null, emailVerified: !!u.emailVerified, pendingEmail: u.pendingEmail || null, twofa: !!u.twofa?.enabled,
   requests: (u.followRequests || []).length, location: u.location || '', website: u.website || '', birthday: u.birthday ? u.birthday.toISOString().slice(0, 10) : '', birthdayVisible: u.birthdayVisible || 'none' });
 const bornText = (u) => (!u.birthday || !['monthday', 'full'].includes(u.birthdayVisible) ? '' : u.birthday.toLocaleDateString('en-US', u.birthdayVisible === 'full' ? { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' } : { month: 'long', day: 'numeric', timeZone: 'UTC' }));
 const sha = (x) => crypto.createHash('sha256').update(x).digest('hex');
@@ -226,6 +316,7 @@ app.get('/api/me', auth, (req, res) => res.json({ user: mine(req.me) }));
 app.patch('/api/me', auth, upload.fields([{ name: 'avatar', maxCount: 1 }, { name: 'banner', maxCount: 1 }]), async (req, res) => {
   req.me.name = String(req.body.name || req.me.name).slice(0, 30);
   req.me.bio = String(req.body.bio || '').slice(0, 160);
+  if (await blockedText(req.me.name + ' ' + req.me.bio)) return res.status(400).json({ error: 'That name or bio contains language that isn’t allowed.' });
   for (const k of ['avatar', 'banner']) {
     const f = req.files?.[k]?.[0];
     if (f?.mimetype.startsWith('image/')) { const r = await pfUpload(f); if (!r) return res.status(502).json({ error: 'Image upload failed' }); req.me[k] = r.url; }
@@ -256,6 +347,7 @@ app.get('/api/posts', async (req, res) => {
     const u = await User.findOne({ username: name });
     if (!u || (me && (u.blocked || []).some((x) => String(x) === me.id))) return res.json([]); // they blocked me
     if (u.protected && me?.id !== u.id && !has(me?.following || [], u.id)) return res.json([]); // protected: followers only
+    if (isSuspended(u)) return res.json([]);
     if (kind === 'likes') { if (me?.id !== u.id) return res.json([]); delete f.parent; f.likes = u._id; if (hidden.length) f.author = { $nin: hidden }; }
     else { f.author = u._id; if (kind === 'replies') f.parent = { $ne: null }; if (kind === 'media') { f['media.url'] = { $exists: true, $ne: null }; f.repostOf = null; } if (kind === 'user') pinnedUser = u; }
   } else if (feed.startsWith('list:')) {
@@ -294,6 +386,7 @@ app.get('/api/posts/:id', async (req, res) => {
   if (p.visibleAt && p.visibleAt > new Date() && String(p.author?._id) !== req.me?.id) return res.sendStatus(404);
   const hidden = await hiddenPosts(req.me);
   if (p.community && (await hiddenCommunities(req.me)).includes(String(p.community._id))) return res.sendStatus(404);
+  if (p.author && isSuspended(p.author) && !req.me?.admin && !req.me?.mod) return res.sendStatus(404);
   if (p.author?.protected && String(p.author._id) !== req.me?.id && !has(req.me?.following || [], p.author.id)) return res.sendStatus(404);
   const [rs, par] = await Promise.all([pop(Post.find({ parent: p._id, author: { $nin: hidden }, ...visible() }).sort('createdAt').limit(50)), p.parent ? pop(Post.findById(p.parent)) : null]);
   res.json({ post: shape(p, req.me), parent: par && shape(par, req.me), replies: rs.map((r) => shape(r, req.me)) });
@@ -316,6 +409,7 @@ app.post('/api/posts', auth, upload.array('image', 4), async (req, res) => {
     } catch { return res.status(400).json({ error: 'Bad poll' }); }
   }
   if (!text && !files.length && !req.body.gif && !quoteOf && !poll) return res.status(400).json({ error: 'Write something or add an image' });
+  if (await blockedText(text)) return res.status(400).json({ error: 'Your post contains language that isn’t allowed here.' });
   let sched;
   if (req.body.schedule) {
     sched = new Date(req.body.schedule);
@@ -340,7 +434,7 @@ app.post('/api/posts', auth, upload.array('image', 4), async (req, res) => {
   let community;
   if (parent) { const pc = (await Post.findById(parent).select('community'))?.community; if (pc) { if (!(await isMember(pc, req.me))) return res.status(403).json({ error: 'Join this community to reply' }); community = pc; } }
   else if (OID.test(req.body.community || '')) { if (!(await isMember(req.body.community, req.me))) return res.status(403).json({ error: 'Join this community to post in it' }); community = req.body.community; }
-  const p = await Post.create({ author: req.me._id, text, media: images[0], images, parent, quoteOf, poll, preview, replyLimit, topics: topicsOf(text), community, ...(sched && { scheduled: true, visibleAt: sched, createdAt: sched }) });
+  const p = await Post.create({ author: req.me._id, text, media: images[0], images, parent, quoteOf, poll, preview, replyLimit, topics: topicsOf(text), community, sensitive: images.length > 0 && req.body.sensitive === '1', ...(sched && { scheduled: true, visibleAt: sched, createdAt: sched }) });
   if (quoteOf) await Post.updateOne({ _id: quoteOf }, { $inc: { quotes: 1 } });
   if (parent) await Post.updateOne({ _id: parent }, { $inc: { replies: 1 } });
   const told = new Set([String(req.me._id)]);
@@ -358,6 +452,7 @@ app.patch('/api/posts/:id', auth, async (req, res) => {
   if (Date.now() - p.createdAt > EDIT_MS) return res.status(403).json({ error: 'Posts can only be edited for 60 minutes' });
   const text = String(req.body.text || '').trim().slice(0, 280);
   if (!text && !p.media?.url && !p.quoteOf && !p.poll?.options?.length) return res.status(400).json({ error: 'A post can’t be empty' });
+  if (await blockedText(text)) return res.status(400).json({ error: 'Your post contains language that isn’t allowed here.' });
   p.text = text; p.topics = topicsOf(text);
   if (!(p.visibleAt && p.visibleAt > new Date())) p.editedAt = new Date();
   if (!p.images?.length && !p.poll?.options?.length && !p.quoteOf) p.preview = await linkPreview(text);
@@ -462,7 +557,7 @@ app.get('/api/users/:u', async (req, res) => {
   const [followers, posts] = await Promise.all([User.countDocuments({ following: u._id }), Post.countDocuments({ author: u._id, parent: null, repostOf: null, ...visible() })]);
   res.json({ ...pub(u), joined: u.createdAt, following: u.following.length, followers: followers + fakeVal(u.fake), posts, isFollowing: !!req.me && has(req.me.following, u.id),
     blocked: !!req.me && has(req.me.blocked, u.id), muted: !!req.me && has(req.me.muted, u.id), blockedBy: !!req.me && has(u.blocked, req.me.id),
-    requested: !!req.me && has(u.followRequests, req.me.id), canSee: !u.protected || (!!req.me && (req.me.id === u.id || has(req.me.following, u.id))), location: u.location || '', website: u.website || '', born: bornText(u) });
+    requested: !!req.me && has(u.followRequests, req.me.id), canSee: !u.protected || (!!req.me && (req.me.id === u.id || has(req.me.following, u.id))), location: u.location || '', website: u.website || '', born: bornText(u), suspended: isSuspended(u) });
 });
 app.post('/api/users/:u/follow', auth, async (req, res) => {
   const u = await User.findOne({ username: req.params.u.toLowerCase() });
@@ -551,9 +646,12 @@ app.post('/api/views', async (req, res) => {
   const ids = [...new Set((Array.isArray(req.body.ids) ? req.body.ids : []).filter((x) => OID.test(x)))].slice(0, 40);
   if (ids.length) {
     const ps = (await Post.find({ _id: { $in: ids }, ...visible() }).select('author')).filter((p) => String(p.author) !== req.me?.id), day = new Date().toISOString().slice(0, 10);
-    if (ps.length) {
-      await Post.updateMany({ _id: { $in: ps.map((p) => p._id) } }, { $inc: { views: 1 } });
-      await Daily.bulkWrite(ps.map((p) => ({ updateOne: { filter: { post: p._id, day }, update: { $inc: { n: 1 }, $setOnInsert: { author: p.author } }, upsert: true } })));
+    const who = req.me ? 'u' + req.me.id : 'i' + clientIp(req); // dedupe per viewer per post per day, so scripts can't inflate counts from one place
+    const seen = ps.length ? await ViewSeen.bulkWrite(ps.map((p) => ({ updateOne: { filter: { _id: `${p.id}:${who}:${day}` }, update: { $setOnInsert: { at: new Date() } }, upsert: true } })), { ordered: false }) : null;
+    const fresh = ps.filter((_, i) => seen?.upsertedIds && i in seen.upsertedIds);
+    if (fresh.length) {
+      await Post.updateMany({ _id: { $in: fresh.map((p) => p._id) } }, { $inc: { views: 1 } });
+      await Daily.bulkWrite(fresh.map((p) => ({ updateOne: { filter: { post: p._id, day }, update: { $inc: { n: 1 }, $setOnInsert: { author: p.author } }, upsert: true } })));
     }
   }
   res.json({ ok: true });
@@ -702,8 +800,22 @@ app.post('/api/follow-requests/:u/:act', auth, async (req, res) => {
   if (req.params.act === 'approve') { await User.updateOne({ _id: u._id }, { $addToSet: { following: req.me._id } }); await notify(u._id, req.me._id, 'accepted'); }
   res.json({ ok: true });
 });
+app.get('/api/me/export', auth, async (req, res) => { // everything tied to your account, as a download
+  const me = req.me, name = async (ids) => (await User.find({ _id: { $in: ids } }).select('username')).map((u) => u.username);
+  const [posts, lists, folders, drafts, convs, following, blocked, muted] = await Promise.all([
+    Post.find({ author: me._id }).sort('createdAt').limit(20000), List.find({ owner: me._id }), Folder.find({ user: me._id }), Draft.find({ user: me._id }), Conv.find({ members: me._id }),
+    name(me.following), name(me.blocked), name(me.muted)]);
+  const msgs = await Msg.find({ conv: { $in: convs.map((c) => c._id) } }).sort('createdAt').limit(20000);
+  res.set('Content-Disposition', 'attachment; filename="unvia-data.json"');
+  res.json({ exportedAt: new Date(), account: { ...mine(me), createdAt: me.createdAt }, following, blocked, muted, bookmarks: me.bookmarks,
+    posts: posts.map((p) => ({ id: p.id, at: p.createdAt, text: p.text, reply: !!p.parent, repost: !!p.repostOf, quote: !!p.quoteOf, images: (p.images || []).map((i) => i.url), community: p.community || null })),
+    lists: lists.map((l) => ({ name: l.name, description: l.description, private: !!l.private, members: l.members.length })), folders: folders.map((f) => ({ name: f.name, posts: f.posts })), drafts: drafts.map((d) => d.text),
+    messages: msgs.map((m) => ({ conversation: String(m.conv), at: m.createdAt, mine: String(m.from) === me.id, text: m.deleted ? '' : m.text, image: m.deleted ? null : m.image?.url || null })) });
+});
 app.delete('/api/me', auth, async (req, res) => {
+  if (!(await bcrypt.compare(String(req.body?.password || ''), req.me.hash))) return res.status(400).json({ error: 'Wrong password' });
   await Post.deleteMany({ author: req.me._id });
+  await PushSub.deleteMany({ user: req.me._id });
   await Msg.deleteMany({ from: req.me._id });
   for (const c of await Conv.find({ members: req.me._id })) {
     await Conv.updateOne({ _id: c._id }, { $pull: { members: req.me._id, reads: { u: req.me._id } } });
@@ -718,28 +830,74 @@ app.get('/api/gifs', async (req, res) => {
   res.json(((await r.json()).data || []).map((g) => g.images.fixed_height.url));
 });
 app.post('/api/report', auth, async (req, res) => {
+  if (!OID.test(req.body.target || '')) return res.sendStatus(400);
+  if (await Report.exists({ by: req.me._id, status: 'open', [req.body.kind === 'post' ? 'post' : 'user']: req.body.target })) return res.json({ ok: true }); // already reported
   const { kind, target, reason } = req.body;
   await Report.create({ by: req.me._id, [kind === 'post' ? 'post' : 'user']: target, reason: String(reason || '').slice(0, 60) });
   res.json({ ok: true });
 });
 const adm = (q, r, n) => (q.me?.admin ? n() : r.sendStatus(403));
-app.get('/api/admin/overview', adm, async (req, res) => {
-  const [users, posts, openReports, rs, recent] = await Promise.all([User.countDocuments(), Post.countDocuments(), Report.countDocuments({ status: 'open' }),
-    Report.find({ status: 'open' }).sort('-createdAt').limit(30).populate('by').populate({ path: 'post', populate: 'author' }).populate('user'), User.find({ ghost: { $ne: true } }).sort('-createdAt').limit(30)]);
-  res.json({ users, posts, openReports, recent: recent.map((u) => ({ ...pub(u), banned: !!u.banned })),
-    reports: rs.map((r) => ({ id: r.id, reason: r.reason, by: r.by?.username, preview: r.post ? `@${r.post.author?.username}: ${r.post.text || '[media]'}` : `@${r.user?.username}` })) });
+const modr = (q, r, n) => (q.me?.admin || q.me?.mod ? n() : r.sendStatus(403)); // moderators: reports and suspensions only
+const logMod = (me, action, extra = {}) => ModLog.create({ mod: me._id, action, ...extra }).catch(() => {});
+const canActOn = (me, u) => !!u && u.id !== me.id && !u.admin && !(u.mod && !me.admin); // nobody moderates the owner; only the owner moderates moderators
+async function suspend(me, u, days, reason) { // days: >0 timed, 0 permanent ban, -1 lift
+  const note = String(reason || '').slice(0, 200);
+  if (days === -1) await User.updateOne({ _id: u._id }, { $unset: { banned: 1, suspendedUntil: 1, suspendReason: 1 } });
+  else if (days === 0) await User.updateOne({ _id: u._id }, { banned: true, suspendReason: note, $unset: { suspendedUntil: 1 } });
+  else await User.updateOne({ _id: u._id }, { suspendedUntil: new Date(Date.now() + Math.min(days, 365) * 864e5), suspendReason: note, $unset: { banned: 1 } });
+  modIds.at = 0; // refresh the hidden-accounts cache
+  await logMod(me, days === -1 ? 'lift suspension' : days === 0 ? 'ban' : `suspend ${Math.min(days, 365)}d`, { user: u._id, note });
+}
+app.get('/api/admin/overview', modr, async (req, res) => {
+  const [users, posts, rs, recent, log] = await Promise.all([User.countDocuments({ ghost: { $ne: true } }), Post.countDocuments(),
+    Report.find({ status: 'open' }).sort('-createdAt').limit(300).populate('by').populate({ path: 'post', populate: 'author' }).populate('user'),
+    User.find({ ghost: { $ne: true } }).sort('-createdAt').limit(30), ModLog.find().sort('-createdAt').limit(30).populate('mod').populate('user')]);
+  const groups = new Map(); // reports about the same post/account are shown together, most-reported first
+  for (const r of rs) {
+    const k = r.post ? 'p' + oid(r.post) : r.user ? 'u' + oid(r.user) : null; if (!k) continue;
+    const g = groups.get(k) || { id: r.id, kind: r.post ? 'post' : 'user', count: 0, reasons: new Set(), by: [], media: !!r.post?.media?.url, preview: r.post ? `@${r.post.author?.username}: ${r.post.text || '[media]'}` : `@${r.user?.username}` };
+    g.count++; g.reasons.add(r.reason); if (g.by.length < 3 && r.by) g.by.push(r.by.username); groups.set(k, g);
+  }
+  res.json({ users, posts, openReports: groups.size, recent: recent.map((u) => ({ ...pub(u), banned: !!u.banned, suspended: isSuspended(u), until: u.suspendedUntil || null })),
+    reports: [...groups.values()].sort((a, b) => b.count - a.count).slice(0, 30).map((g) => ({ ...g, reasons: [...g.reasons] })),
+    modlog: log.map((l) => ({ at: l.createdAt, mod: l.mod?.username, action: l.action, target: l.user ? '@' + l.user.username : l.post ? 'a post' : '', note: l.note || '' })),
+    filters: req.me.admin ? (await Filter.find().sort('word').limit(200)).map((f) => f.word) : [] });
 });
-app.post('/api/admin/reports/:id', adm, async (req, res) => {
-  const r = await Report.findById(req.params.id).populate('post'); if (!r) return res.sendStatus(404);
-  const a = req.body.action;
-  if (a === 'delete' && r.post) { await Post.deleteMany({ $or: [{ _id: r.post._id }, { repostOf: r.post._id }] }); await Post.updateMany({ quoteOf: r.post._id }, { quoteDeleted: true }); }
-  if (a === 'ban') await User.updateOne({ _id: r.user || r.post?.author, admin: { $ne: true } }, { banned: true });
-  r.status = a === 'dismiss' ? 'dismissed' : 'actioned'; await r.save(); res.json({ ok: true });
+app.post('/api/admin/reports/:id', modr, async (req, res) => {
+  const r = OID.test(req.params.id) ? await Report.findById(req.params.id).populate('post') : null; if (!r) return res.sendStatus(404);
+  const a = String(req.body.action || ''), targetId = r.user || r.post?.author, same = { status: 'open', ...(r.post ? { post: r.post._id } : { user: r.user }) };
+  if (a === 'delete' && r.post) {
+    await Post.deleteMany({ $or: [{ _id: r.post._id }, { repostOf: r.post._id }] }); await Post.updateMany({ quoteOf: r.post._id }, { quoteDeleted: true });
+    await Note.deleteMany({ post: r.post._id }); await logMod(req.me, 'delete post', { user: r.post.author, post: r.post._id, note: (r.post.text || '').slice(0, 100) });
+  } else if (a === 'sensitive' && r.post) { await Post.updateOne({ _id: r.post._id }, { sensitive: true }); await logMod(req.me, 'mark sensitive', { user: r.post.author, post: r.post._id });
+  } else if ((a === 'suspend7' || a === 'ban') && targetId) {
+    const u = await User.findById(targetId); if (!canActOn(req.me, u)) return res.status(403).json({ error: 'You can’t do that to this account' });
+    await suspend(req.me, u, a === 'ban' ? 0 : 7, 'Reported content');
+  } else if (a !== 'dismiss') return res.sendStatus(400);
+  if (a === 'dismiss') await logMod(req.me, 'dismiss report', { user: r.user || r.post?.author });
+  await Report.updateMany(same, { status: a === 'dismiss' ? 'dismissed' : 'actioned' }); res.json({ ok: true });
 });
+app.post('/api/admin/users/:id/suspend', modr, async (req, res) => { // days: 1-365 timed, 0 permanent, -1 lift
+  const u = OID.test(req.params.id) ? await User.findById(req.params.id) : null;
+  if (!canActOn(req.me, u)) return res.status(403).json({ error: 'You can’t do that to this account' });
+  const days = parseInt(req.body.days); if (!Number.isInteger(days) || days < -1 || days > 365) return res.sendStatus(400);
+  await suspend(req.me, u, days, req.body.reason); res.json({ ok: true });
+});
+app.post('/api/admin/users/:id/mod', adm, async (req, res) => {
+  const u = OID.test(req.params.id) ? await User.findById(req.params.id) : null;
+  if (!u || u.admin || u.ghost) return res.sendStatus(404);
+  u.mod = !!req.body.on; await u.save(); await logMod(req.me, u.mod ? 'make moderator' : 'remove moderator', { user: u._id }); res.json({ mod: u.mod });
+});
+app.post('/api/admin/filters', adm, async (req, res) => {
+  const w = String(req.body.word || '').trim().toLowerCase().slice(0, 40);
+  if (w.length < 2) return res.status(400).json({ error: 'Enter a word or phrase (2+ characters)' });
+  if ((await Filter.countDocuments()) >= 500) return res.status(400).json({ error: 'Filter list is full' });
+  await Filter.updateOne({ word: w }, { word: w }, { upsert: true }); filt.at = 0; await logMod(req.me, 'add blocked word', { note: w }); res.json({ ok: true });
+});
+app.delete('/api/admin/filters/:word', adm, async (req, res) => { await Filter.deleteOne({ word: String(req.params.word).toLowerCase() }); filt.at = 0; await logMod(req.me, 'remove blocked word', { note: req.params.word }); res.json({ ok: true }); });
 app.post('/api/admin/users/:id', adm, async (req, res) => {
   const set = {};
   if (['', 'verified', 'business', 'government', 'owner'].includes(req.body.badge)) set.badge = req.body.badge;
-  if ('banned' in req.body && req.params.id !== req.me.id) set.banned = !!req.body.banned;
   await User.updateOne({ _id: req.params.id }, set); res.json({ ok: true });
 });
 
@@ -926,6 +1084,8 @@ app.post('/api/conversations/:id/messages', auth, upload.single('image'), async 
   const m = await Msg.create({ conv: c._id, from: req.me._id, text, image });
   await Conv.updateOne({ _id: c._id }, { $set: { lastAt: m.createdAt, lastText: text || '📷 Photo', lastFrom: req.me._id }, ...(accepting && { $unset: { requestFor: 1 } }) });
   await markRead(c._id, req.me._id, m.createdAt);
+  if (PUSH) await Promise.race([Promise.all(c.members.filter((x) => String(x._id) !== req.me.id && !has(x.blocked, req.me.id) && !has(x.muted, req.me.id) && pushAllowed(x.pushLevel || 'all', 'dm'))
+    .map((x) => pushTo(x._id, { title: c.group ? `${req.me.name} · ${c.name || 'Group'}` : req.me.name, body: text ? snip(text) : '📷 Photo', url: '/#/messages/' + c.id, tag: 'dm:' + c.id }))).catch(() => {}), new Promise((ok) => setTimeout(ok, 2500))]);
   res.json(msgShape(m));
 });
 app.post('/api/conversations/:id/accept', auth, async (req, res) => {
@@ -1196,6 +1356,23 @@ app.delete('/api/notes/:id', auth, async (req, res) => {
   const n = OID.test(req.params.id) ? await Note.findOne({ _id: req.params.id, ...(req.me.admin ? {} : { author: req.me._id }) }) : null;
   if (!n) return res.sendStatus(404);
   await Note.deleteOne({ _id: n._id }); await refreshNote(n.post); res.json({ ok: true });
+});
+
+// ---- push subscriptions ----
+app.get('/api/push/key', (_q, res) => res.json({ key: PUSH ? process.env.VAPID_PUBLIC_KEY : null }));
+app.post('/api/push/subscribe', auth, async (req, res) => {
+  const { endpoint, keys } = req.body || {};
+  if (!PUSH) return res.status(400).json({ error: 'Push isn’t set up on this server' });
+  if (typeof endpoint !== 'string' || !/^https:\/\//.test(endpoint) || endpoint.length > 600 || !keys?.p256dh || !keys?.auth || String(keys.p256dh).length > 200 || String(keys.auth).length > 100) return res.status(400).json({ error: 'Bad subscription' });
+  if (!(await PushSub.exists({ endpoint })) && (await PushSub.countDocuments({ user: req.me._id })) >= 10) return res.status(400).json({ error: 'Too many devices. Turn push off on one first.' });
+  await PushSub.updateOne({ endpoint }, { user: req.me._id, keys: { p256dh: String(keys.p256dh), auth: String(keys.auth) }, ua: String(req.headers['user-agent'] || '').slice(0, 120) }, { upsert: true });
+  res.json({ ok: true });
+});
+app.post('/api/push/unsubscribe', auth, async (req, res) => { await PushSub.deleteOne({ endpoint: String(req.body?.endpoint || ''), user: req.me._id }); res.json({ ok: true }); });
+app.put('/api/me/push', auth, async (req, res) => { req.me.pushLevel = req.body.level === 'important' ? 'important' : 'all'; await req.me.save(); res.json({ level: req.me.pushLevel }); });
+app.post('/api/push/test', auth, async (req, res) => {
+  if (!PUSH) return res.status(400).json({ error: 'Push isn’t set up on this server' });
+  await pushTo(req.me._id, { title: 'Unvia', body: 'Push notifications are working 🎉', url: '/#/settings', tag: 'test' }); res.json({ ok: true });
 });
 
 app.use(express.static(path.join(__dirname, 'public')));

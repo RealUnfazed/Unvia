@@ -13,6 +13,7 @@ Created by **Alireza Asakareh (RealUnfazed)** · [MIT License](LICENSE)
 - **Direct messages:** 1:1 and group chats, photos, read receipts ("Seen"), delete your own messages, unread badge, and message requests (a chat from someone you don't follow waits in Requests until you accept)
 - **Accounts & safety:** password reset and email verification by email, two-factor login (authenticator app + backup codes), log out of all devices, account lockout after repeated failures, protected accounts with follow requests, muted words, blocked/muted account lists, dim and light themes, profile location / website / birthday
 - **Platform:** Explore (trending posts, hashtags, topics), custom Lists (public or private, subscribe, pin to Home), communities (open or approval-only, rules, moderators, join requests), bookmark folders, Community Notes, per-post and account analytics with view counts
+- **Production-ready:** database-backed rate limits, security headers, a compiled Tailwind stylesheet, installable app (PWA) with web push notifications, moderator role with timed suspensions, grouped reports and an action log, banned-words filter, sensitive-media labels, data export, password-confirmed account deletion
 - **Block & mute:** hide people from your feeds, search and notifications; blocking also removes follows both ways
 - **Badges:** Verified (blue), Business (gold), Government (grey) and Owner (gradient)
 - **Search & trends:** people, posts and hashtags, plus trending hashtags
@@ -26,7 +27,7 @@ Created by **Alireza Asakareh (RealUnfazed)** · [MIT License](LICENSE)
 ```bash
 npm install
 cp .env.example .env      # then fill it in
-npm run dev               # http://localhost:3000
+npm run dev               # builds the stylesheet, then serves http://localhost:3000
 ```
 
 | Variable | Purpose |
@@ -38,6 +39,7 @@ npm run dev               # http://localhost:3000
 | `OWNER_USERNAME` | Account that becomes admin with the Owner badge (optional) |
 | `RESEND_API_KEY` | Sends password-reset and email-verification mail through [Resend](https://resend.com) (optional, see notes) |
 | `MAIL_FROM` | Sender, e.g. `Unvia <hello@yourdomain.com>` (defaults to Resend's test sender) |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Enables push notifications. Run `npm run vapid` once to generate the key pair; the subject is `mailto:you@example.com` (optional) |
 | `NOTES_MIN_RATINGS` | Ratings a Community Note needs before it can be shown (default 5) |
 | `NOTES_MIN_AGE_DAYS` | Minimum account age to write notes (default 0) |
 | `APP_URL` | Public URL used in email links, e.g. `https://unvia.example.com` (defaults to the request host) |
@@ -98,8 +100,18 @@ capacitor.config.json  Mobile shell
 | 3. Messaging | Direct messages (1:1 and group), read receipts, message requests | Done |
 | 4. Accounts & safety | Password reset, email verification, protected accounts, 2FA, dim/light themes, muted words, profile extras (location, website, birthday) | Done |
 | 5. Platform | Lists, Explore and topics, post analytics, Community Notes, communities, bookmark folders | Done |
-| 6. Production | Rate limiting, Tailwind build (no CDN), moderation tools, push notifications for mobile | Next |
+| 6. Production | Rate limiting, Tailwind build (no CDN), moderation tools, push notifications | Done |
 | Later / needs external services | Spaces (live audio needs WebRTC infrastructure), video posts (needs video hosting), Premium and payouts (needs a payment provider) | Backlog |
+
+## Production notes
+
+- **Stylesheet:** `npm run build:css` compiles Tailwind v3 to `public/tailwind.css` (Vercel runs it on deploy; `npm run dev`, `android` and `ios` run it for you). If the file is missing the page falls back to the Tailwind CDN, so nothing breaks, but build it for production and for the native apps.
+- **Secrets:** in production (`VERCEL_ENV` or `NODE_ENV` = production) the server refuses to start unless `JWT_SECRET` is 24+ characters.
+- **Rate limits** (counted in MongoDB, so they hold across serverless instances; a 429 says how long to wait): login 20 per 10 min per IP, sign-up 5 per hour, password reset 10 per hour, posts 40 per 10 min per user, likes/reposts 300 per 10 min, messages 60 per minute, search 90 per minute per IP, data export 3 per hour. If the limiter's own database call fails, requests are allowed rather than the site going down. Behind your own proxy, make sure it sets `x-forwarded-for` or `x-real-ip` honestly.
+- **Views** are counted once per viewer per post per day (by account, or by IP for guests).
+- **Moderation:** the owner can make moderators (Admin → Users). Moderators see reports and can delete posts, mark media sensitive and suspend (1, 7, 30 days or permanent) but cannot touch the owner or other moderators, badges, blocked words or growth tools. Suspended and banned accounts disappear from timelines, search and Explore. Every action is logged. Reports about the same post or account are grouped.
+- **Push notifications** use Web Push (VAPID) and need the optional `web-push` package, which `npm install` adds. They work in browsers, installed web apps on Android, and on iPhone (iOS 16.4+) once Unvia is added to the Home Screen. A notification is skipped while the app is open and focused, and Settings lets people choose "everything" or "only replies, mentions, messages and requests". **The Capacitor (Android/iOS) and Electron shells do not get push**: that needs Firebase Cloud Messaging / Apple push setup, which isn't included. Install the web app to the Home Screen instead.
+- **Not included:** per-account lockout covers password guessing, but there is no CAPTCHA, and there is no automated image/NSFW detection (authors and moderators label sensitive media by hand).
 
 ## Testing
 
@@ -107,7 +119,7 @@ capacitor.config.json  Mobile shell
 npm test
 ```
 
-Needs only Node 18+ (no installs, no database). It runs three groups: the server loads without start-up errors, 69 checks on core logic (two-factor codes against the RFC test vectors, the link-preview safety check, message rules, topic tagging, note thresholds, muted words, number formatting), and the browser app run against a fake page and fake API, rendering every screen and firing the click and form handlers.
+Needs only Node 18+ (no installs, no database). It runs four groups (the server starts and refuses weak secrets in production; core logic; rate limits, moderation rules, push helpers, the service worker and the build setup; and the browser app against a fake page and API). The core-logic and browser groups cover: the server loads without start-up errors, 69 checks on core logic (two-factor codes against the RFC test vectors, the link-preview safety check, message rules, topic tagging, note thresholds, muted words, number formatting), and the browser app run against a fake page and fake API, rendering every screen and firing the click and form handlers.
 
 ## Contributing & community
 

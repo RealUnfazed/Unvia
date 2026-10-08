@@ -4,14 +4,17 @@
   "private": true,
   "main": "electron/main.js",
   "scripts": {
-    "dev": "node --watch server.js",
+    "dev": "npm run build:css && node --watch server.js",
     "start": "node server.js",
     "desktop": "electron .",
     "desktop:build": "electron-builder",
     "cap:add": "cap add android && cap add ios",
-    "android": "cap sync android && cap open android",
-    "ios": "cap sync ios && cap open ios",
-    "test": "node tests/run.js"
+    "android": "npm run build:css && cap sync android && cap open android",
+    "ios": "npm run build:css && cap sync ios && cap open ios",
+    "test": "node tests/run.js",
+    "build:css": "tailwindcss -i ./src/input.css -o ./public/tailwind.css --minify",
+    "watch:css": "tailwindcss -i ./src/input.css -o ./public/tailwind.css --watch",
+    "vapid": "node -e \"console.log(require('web-push').generateVAPIDKeys())\""
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
@@ -28,7 +31,8 @@
     "@capacitor/core": "^7.0.0",
     "@capacitor/ios": "^7.0.0",
     "electron": "^37.0.0",
-    "electron-builder": "^26.0.0"
+    "electron-builder": "^26.0.0",
+    "tailwindcss": "~3.4.17"
   },
   "build": {
     "appId": "com.realunfazed.unvia",
@@ -39,5 +43,8 @@
   },
   "description": "Unvia: a full-stack social platform (Node.js, MongoDB, Tailwind) for web, Android, iOS and desktop.",
   "author": "Alireza Asakareh (RealUnfazed)",
-  "license": "MIT"
+  "license": "MIT",
+  "optionalDependencies": {
+    "web-push": "^3.6.7"
+  }
 }

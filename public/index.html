@@ -7,7 +7,14 @@
 <meta name="theme-color" content="#000000">
 <title>Unvia</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%2338bdf8%27 stroke-width=%273%27 stroke-linecap=%27round%27%3E%3Cpath d=%27M6 4v9a6 6 0 0 0 12 0V4%27/%3E%3C/svg%3E">
-<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/tailwind.css" id="twcss">
+<script>/* If the compiled stylesheet is missing (e.g. `npm run build:css` hasn't run), fall back to the Tailwind CDN so the app still looks right. */
+document.getElementById('twcss').addEventListener('error', function () { var s = document.createElement('script'); s.src = 'https://cdn.tailwindcss.com'; document.head.appendChild(s); });</script>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Unvia">
 <style>
 @keyframes pg{from{opacity:0;transform:translateY(8px)}}
 @keyframes drop{from{opacity:0;transform:translateY(-14px) scale(.98)}}
@@ -185,7 +192,9 @@ const pollInner = (p) => {
   }).join('') + `<div class="mt-2 text-xs text-zinc-500">${fmt(q.total)} vote${q.total === 1 ? '' : 's'} · ${left(q.endsAt)}</div>`;
 };
 const pollBlock = (p) => (p.poll ? `<div data-pollbox class="mt-3">${pollInner(p)}</div>` : '');
-const gallery = (p) => {
+const REV = new Set(); // posts whose sensitive media you chose to show
+const gallery = (p) => { const g = gallery0(p); return g && p.sensitive && !REV.has(p.id) ? `<div class="relative mt-3 overflow-hidden rounded-2xl">${g.replace('class="mt-3 grid', 'class="grid')}<div class="absolute inset-0 z-10 grid place-items-center bg-[rgba(0,0,0,.45)] backdrop-blur-2xl"><button type="button" data-reveal class="rounded-full bg-[rgba(0,0,0,.75)] px-4 py-2 text-sm font-bold text-white">Sensitive media · Show</button></div></div>` : g; };
+const gallery0 = (p) => {
   const im = p.images?.length ? p.images : p.media ? [p.media] : [], n = im.length; if (!n) return '';
   return `<div class="mt-3 grid gap-0.5 overflow-hidden rounded-2xl border border-zinc-800 ${n > 1 ? 'h-72 grid-cols-2' : ''} ${n > 2 ? 'grid-rows-2' : ''}">${im.map((u, i) => `<button type="button" data-img="${esc(u)}" class="block overflow-hidden ${n === 3 && i === 0 ? 'row-span-2' : ''}"><img src="${esc(u)}" loading="lazy" class="w-full object-cover ${n > 1 ? 'h-full' : 'max-h-[510px]'}"></button>`).join('')}</div>`;
 };
@@ -204,6 +213,7 @@ const emoHTML = () => Object.entries(EMO).map(([k, l]) => `<div class="px-1 pt-1
 function renderPv(c) {
   const pv = c.querySelector('.pv'), files = c._files || [], gif = c.dataset.gif;
   const items = gif ? [{ src: gif, k: 'gif' }] : files.map((f, i) => ({ src: f.url, k: i }));
+  c.querySelector('[data-sens]')?.classList.toggle('hidden', !items.length);
   pv.className = `pv mb-2 grid gap-2 ${items.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}${items.length ? '' : ' hidden'}`;
   pv.innerHTML = items.map((it) => `<div class="drop relative"><img src="${esc(it.src)}" class="w-full rounded-2xl object-cover ${items.length > 1 ? 'h-40' : 'max-h-72'}"><button type="button" data-rmimg="${it.k}" aria-label="Remove" class="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-[rgba(0,0,0,.7)] text-white hover:bg-[#000]">✕</button></div>`).join('');
 }
@@ -217,7 +227,7 @@ function resetComposer(c) {
   c.querySelector('textarea').value = ''; c.querySelector('.ct').textContent = 280;
   (c._files || []).forEach((f) => URL.revokeObjectURL(f.url)); c._files = []; delete c.dataset.gif; renderPv(c); togglePoll(c, false);
   const s = c.querySelector('.sch'); if (s) { s.classList.add('hidden'); s.querySelector('input').value = ''; }
-  c.querySelector('.emo').classList.add('hidden'); c.querySelector('.sub').textContent = c.dataset.parent ? 'Reply' : 'Post';
+  delete c.dataset.sens; c.querySelector('[data-sens]')?.classList.remove('text-amber-400', 'font-bold'); c.querySelector('.emo').classList.add('hidden'); c.querySelector('.sub').textContent = c.dataset.parent ? 'Reply' : 'Post';
   c.dataset.rl = ''; const rb = c.querySelector('[data-rlbtn]'); if (rb) rb.textContent = RL[''];
 }
 // Shrinks big photos in the browser so 4 of them fit under the host's request-size limit.
@@ -267,6 +277,7 @@ const composer = (parent = '', quote = '', text = '', draft = '', community = ''
     <label class="cursor-pointer hover:text-sky-400">Photo<input type="file" accept="image/*" multiple class="hidden"></label>
     <button type="button" data-gifopen class="rounded border border-sky-500 px-1.5 text-xs font-bold hover:bg-sky-500/10">GIF</button>
     ${parent ? '' : '<button type="button" data-pollbtn class="hover:text-sky-400">Poll</button>'}
+    <button type="button" data-sens class="hidden hover:text-sky-400">Sensitive</button>
     <button type="button" data-emo class="text-base leading-none" aria-label="Emoji">😀</button>
     ${parent || quote ? '' : '<button type="button" data-schbtn class="hover:text-sky-400">Schedule</button>'}
     ${parent ? '' : '<button type="button" data-drafts class="text-zinc-400 hover:text-zinc-200">Drafts</button>'}
@@ -358,11 +369,32 @@ const muted = (p) => {
 const swt = (on, attr) => `<button ${attr} role="switch" aria-checked="${on}" class="relative h-7 w-12 shrink-0 rounded-full transition-colors ${on ? 'bg-sky-500' : 'bg-zinc-800'}"><i class="absolute top-0.5 h-6 w-6 rounded-full bg-[#fff] shadow transition-all ${on ? 'left-[22px]' : 'left-0.5'}"></i></button>`;
 const sec = (t, inner, d = '') => `<section class="border-b border-zinc-800 p-4"><h2 class="text-lg font-bold">${t}</h2>${d ? `<p class="mt-1 text-sm text-zinc-500">${d}</p>` : ''}<div class="mt-3 space-y-3">${inner}</div></section>`;
 const btnO = 'rounded-full border border-zinc-600 px-4 py-1.5 text-sm font-bold hover:bg-zinc-900';
+// ---------- push notifications (Web Push; needs a service worker and, on iPhone, the app added to the Home Screen) ----------
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+async function pushStatus() {
+  if (!pushSupported()) return { supported: false };
+  let key = null, sub = null;
+  try { key = (await api('/push/key')).key; } catch {}
+  try { const reg = await navigator.serviceWorker.getRegistration(); sub = reg ? await reg.pushManager.getSubscription() : null; } catch {}
+  return { supported: true, key, perm: Notification.permission, on: !!sub && Notification.permission === 'granted' };
+}
+const urlB64 = (s) => Uint8Array.from([...atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'))].map((c) => c.charCodeAt(0)));
+async function pushOn() {
+  const { key } = await api('/push/key'); if (!key) throw new Error('Push isn’t set up on this server');
+  if ((await Notification.requestPermission()) !== 'granted') throw new Error('Notifications are blocked in your browser settings');
+  const reg = await navigator.serviceWorker.ready, sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64(key) }));
+  await api('/push/subscribe', { method: 'POST', body: JSON.stringify(sub.toJSON()) });
+}
+async function pushOff() {
+  const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription();
+  if (sub) { await api('/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint: sub.endpoint }) }); await sub.unsubscribe(); }
+}
 async function settings(v, quiet) {
   if (!me) return void (v.innerHTML = head('Settings', '', false) + guest());
   if (!quiet) v.innerHTML = head('Settings', '', false) + skel;
   let rel = { blocked: [], muted: [] };
-  try { const [m, r] = await Promise.all([api('/me'), api('/me/relations')]); me = m.user; localStorage.me = JSON.stringify(me); rel = r; } catch {}
+  let ps = { supported: false };
+  try { const [m, r, p] = await Promise.all([api('/me'), api('/me/relations'), pushStatus()]); me = m.user; localStorage.me = JSON.stringify(me); rel = r; ps = p; } catch {}
   const theme = localStorage.theme || 'dark';
   const urel = (u, k) => `<div class="flex items-center gap-3">${av(u, 'h-9 w-9 text-sm')}<div class="min-w-0 flex-1 truncate"><b>${esc(u.name)}</b> <span class="text-zinc-500">@${esc(u.username)}</span></div><button data-rel="${k}" data-un="${esc(u.username)}" class="${btnO}">${k === 'block' ? 'Unblock' : 'Unmute'}</button></div>`;
   v.innerHTML = head('Settings', '', false)
@@ -374,9 +406,13 @@ async function settings(v, quiet) {
       <div class="border-t border-zinc-800 pt-3"><b>Muted words</b><p class="text-sm text-zinc-500">Posts containing these are hidden from your timelines and search.</p><form id="mwf" class="mt-2 flex gap-2"><input name="word" maxlength="40" placeholder="Word, phrase or #hashtag" class="${inp}"><button class="shrink-0 rounded-full bg-white px-4 font-bold text-black">Add</button></form><div class="mt-2 flex flex-wrap gap-2">${(me.mutedWords || []).map((w) => `<button data-mwrm="${esc(w)}" class="rounded-full bg-zinc-900 px-3 py-1 text-sm hover:bg-zinc-800">${esc(w)} ✕</button>`).join('') || '<span class="text-sm text-zinc-500">None yet.</span>'}</div></div>
       <div class="border-t border-zinc-800 pt-3"><b>Blocked accounts</b><div class="mt-2 space-y-2">${rel.blocked.map((u) => urel(u, 'block')).join('') || '<p class="text-sm text-zinc-500">You haven’t blocked anyone.</p>'}</div></div>
       <div class="border-t border-zinc-800 pt-3"><b>Muted accounts</b><div class="mt-2 space-y-2">${rel.muted.map((u) => urel(u, 'mute')).join('') || '<p class="text-sm text-zinc-500">You haven’t muted anyone.</p>'}</div></div>`)
+    + sec('Push notifications', !ps.supported ? '<p class="text-sm text-zinc-500">This browser doesn’t support push notifications. On iPhone, add Unvia to your Home Screen first (Share → Add to Home Screen), then open it from there.</p>'
+        : !ps.key ? '<p class="text-sm text-zinc-500">Push notifications aren’t set up on this server yet.</p>'
+        : `<div class="flex items-center justify-between gap-4"><div><b>On this device</b><p class="text-sm text-zinc-500">${ps.perm === 'denied' ? 'Blocked in your browser settings. Allow notifications for this site to turn it on.' : 'Alerts for replies, mentions, messages and more, even when Unvia is closed.'}</p></div>${swt(ps.on, 'data-push')}</div>${ps.on ? `<label class="block text-sm text-zinc-400">What to send<select data-pushlvl class="${inp} mt-1"><option value="all" ${me.pushLevel !== 'important' ? 'selected' : ''}>Everything</option><option value="important" ${me.pushLevel === 'important' ? 'selected' : ''}>Only replies, mentions, messages and requests</option></select></label><button data-pushtest class="${btnO}">Send a test</button>` : ''}`)
     + sec('Security', `<form id="pf" class="space-y-2"><b>Change password</b><input name="current" type="password" required placeholder="Current password" class="${inp}"><input name="next" type="password" required minlength="8" placeholder="New password (8+ characters)" class="${inp}"><p class="err text-sm text-red-400"></p><button class="rounded-full bg-white px-5 py-2 font-bold text-black">Update password</button></form>
       <div class="flex items-center justify-between gap-4 border-t border-zinc-800 pt-3"><div><b>Two-factor authentication</b><p class="text-sm text-zinc-500">${me.twofa ? 'On. You’ll enter a code from your authenticator app when you log in.' : 'Add a second step at login using an authenticator app.'}</p></div><button data-tfa="${me.twofa ? 'off' : 'on'}" class="shrink-0 rounded-full px-4 py-1.5 text-sm font-bold ${me.twofa ? 'border border-zinc-600 hover:bg-zinc-900' : 'bg-white text-black'}">${me.twofa ? 'Turn off' : 'Turn on'}</button></div>
       <div class="border-t border-zinc-800 pt-3"><button data-logoutall class="${btnO}">Log out of all other devices</button></div>`)
+    + sec('Your data', `<button data-export class="${btnO}">Download my data</button>`, 'A JSON file with your profile, posts, lists, bookmarks and messages.')
     + `<section class="p-4"><h2 class="mb-2 font-bold text-red-500">Danger zone</h2><button data-out class="mr-2 ${btnO}">Log out</button><button data-delacct class="rounded-full bg-red-600 px-4 py-1.5 font-bold text-white">Delete account</button></section>`;
 }
 // two-factor setup: QR code (library loaded only when needed) + manual key
@@ -417,17 +453,23 @@ async function followRequests(v, pg) {
   await load(); pg.refresh = load;
 }
 async function admin(v) {
-  if (!me?.admin) return (v.innerHTML = head('Admin', '', false) + '<p class="p-10 text-center text-zinc-500">Admins only.</p>');
-  v.innerHTML = head('Admin panel', 'Manage your platform', false) + skel;
+  if (!me?.admin && !me?.mod) return (v.innerHTML = head('Admin', '', false) + '<p class="p-10 text-center text-zinc-500">Moderators and admins only.</p>');
+  const title = me.admin ? 'Admin panel' : 'Moderation';
+  v.innerHTML = head(title, 'Manage your platform', false) + skel;
   try {
-    const d = await api('/admin/overview');
-    v.innerHTML = head('Admin panel', 'Manage your platform', false) + `<div class="grid grid-cols-3 gap-2 p-4">${[['Users', d.users], ['Posts', d.posts], ['Open reports', d.openReports]].map(([t, n]) => `<div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4"><div class="text-2xl font-extrabold">${fmt(n)}</div><div class="text-xs text-zinc-500">${t}</div></div>`).join('')}</div>
-    <h2 class="px-4 pt-2 text-xl font-extrabold">Reports</h2>${d.reports.length ? d.reports.map((r) => `<div class="border-b border-zinc-800 p-4" data-rid="${r.id}"><div class="text-sm"><b>${esc(r.reason)}</b> · by @${esc(r.by)}</div><p class="my-2 rounded-xl bg-zinc-900 p-3 text-sm">${esc(r.preview)}</p><div class="flex gap-2">${[['dismiss', 'Dismiss'], ['delete', 'Delete post'], ['ban', 'Ban user']].map(([a, t]) => `<button data-ra="${a}" class="rounded-full border border-zinc-600 px-3 py-1 text-sm hover:bg-zinc-900">${t}</button>`).join('')}</div></div>`).join('') : '<p class="p-6 text-zinc-500">No open reports.</p>'}
-    <h2 class="px-4 pt-4 text-xl font-extrabold">Users &amp; badges</h2>${d.recent.map((u) => `<div class="flex items-center gap-2 border-b border-zinc-800 px-4 py-3" data-uid="${u.id}">${av(u)}<div class="min-w-0 flex-1 truncate"><b>${esc(u.name)}</b>${bdg(u)} <span class="text-zinc-500">@${esc(u.username)}</span></div><select data-badge class="rounded bg-zinc-900 px-2 py-1 text-sm">${['', 'verified', 'business', 'government', 'owner'].map((b) => `<option value="${b}" ${u.badge === b ? 'selected' : ''}>${b || 'no badge'}</option>`).join('')}</select><button data-ban data-banned="${u.banned ? 1 : 0}" class="text-sm text-red-500">${u.banned ? 'Unban' : 'Ban'}</button><button data-rlink class="text-sm text-sky-400">Reset link</button></div>`).join('')}
-    <section class="mt-4 border-t border-zinc-800 p-4"><h2 class="text-xl font-extrabold">Maintenance</h2><p class="mt-1 text-sm text-zinc-500">Posts written before topics existed aren’t tagged yet, so they won’t show on topic pages.</p><button data-backfill class="mt-2 rounded-full border border-zinc-600 px-4 py-1.5 text-sm font-bold hover:bg-zinc-900">Tag older posts with topics</button></section>
+    const d = await api('/admin/overview'), owner = !!me.admin;
+    const stat = ([t, n]) => `<div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4"><div class="text-2xl font-extrabold">${fmt(n)}</div><div class="text-xs text-zinc-500">${t}</div></div>`;
+    const rep = (r) => `<div class="border-b border-zinc-800 p-4" data-rid="${r.id}"><div class="flex flex-wrap items-center gap-2 text-sm"><span class="rounded-full bg-red-500/15 px-2 py-0.5 font-bold text-red-400">${r.count} report${r.count === 1 ? '' : 's'}</span><span class="text-zinc-500">${r.reasons.map(esc).join(', ')}</span></div><p class="my-2 rounded-xl bg-zinc-900 p-3 text-sm">${esc(r.preview)}</p><p class="mb-2 text-xs text-zinc-500">Reported by ${r.by.map((u) => '@' + esc(u)).join(', ')}${r.count > r.by.length ? ' and others' : ''}</p><div class="flex flex-wrap gap-2">${[['dismiss', 'Dismiss'], ...(r.kind === 'post' ? [['delete', 'Delete post'], ['sensitive', 'Mark sensitive']] : []), ['suspend7', 'Suspend 7 days'], ['ban', 'Ban']].map(([x, t]) => `<button data-ra="${x}" class="${btnO}">${t}</button>`).join('')}</div></div>`;
+    const usr = (u) => `<div class="flex flex-wrap items-center gap-2 border-b border-zinc-800 px-4 py-3" data-uid="${u.id}">${av(u)}<div class="min-w-0 flex-1"><div class="truncate"><b>${esc(u.name)}</b>${bdg(u)} ${u.mod ? '<span class="rounded bg-sky-500/20 px-1.5 text-xs text-sky-400">mod</span>' : ''}</div><div class="truncate text-sm text-zinc-500">@${esc(u.username)}${u.banned ? ' · banned' : u.suspended ? ' · suspended until ' + new Date(u.until).toLocaleDateString() : ''}</div></div>${owner ? `<select data-badge class="rounded bg-zinc-900 px-2 py-1 text-sm">${['', 'verified', 'business', 'government', 'owner'].map((x) => `<option value="${x}" ${u.badge === x ? 'selected' : ''}>${x || 'no badge'}</option>`).join('')}</select>` : ''}${u.admin || (u.mod && !owner) ? '' : u.suspended ? '<button data-sus="lift" class="text-sm text-emerald-400">Lift</button>' : '<button data-sus="open" class="text-sm text-red-400">Suspend</button>'}${owner && !u.admin ? `<button data-modtoggle="${u.mod ? 0 : 1}" class="text-sm text-sky-400">${u.mod ? 'Remove mod' : 'Make mod'}</button>` : ''}${owner ? '<button data-rlink class="text-sm text-sky-400">Reset link</button>' : ''}</div>`;
+    v.innerHTML = head(title, 'Manage your platform', false) + `<div class="grid grid-cols-3 gap-2 p-4">${[['Users', d.users], ['Posts', d.posts], ['Open reports', d.openReports]].map(stat).join('')}</div>
+    <h2 class="px-4 pt-2 text-xl font-extrabold">Reports</h2>${d.reports.length ? d.reports.map(rep).join('') : '<p class="p-6 text-zinc-500">No open reports.</p>'}
+    <h2 class="px-4 pt-4 text-xl font-extrabold">${owner ? 'Users &amp; roles' : 'Users'}</h2>${d.recent.map(usr).join('')}
+    <h2 class="px-4 pt-4 text-xl font-extrabold">Moderation log</h2>${d.modlog.length ? d.modlog.map((l) => `<div class="border-b border-zinc-800 px-4 py-2 text-sm"><b>@${esc(l.mod)}</b> ${esc(l.action)} ${esc(l.target)}${l.note ? ` <span class="text-zinc-500">— ${esc(l.note)}</span>` : ''} <span class="text-zinc-500">· ${ago(l.at)}</span></div>`).join('') : '<p class="p-6 text-zinc-500">Nothing yet.</p>'}
+    ${owner ? `<section class="mt-4 border-t border-zinc-800 p-4"><h2 class="text-xl font-extrabold">Blocked words</h2><p class="mt-1 text-sm text-zinc-500">Posts, edits, names and bios containing these words are rejected.</p><form id="wff" class="mt-2 flex gap-2"><input name="word" maxlength="40" placeholder="Word or phrase" class="${inp}"><button class="shrink-0 rounded-full bg-white px-4 font-bold text-black">Add</button></form><div class="mt-2 flex flex-wrap gap-2">${d.filters.map((w) => `<button data-wfrm="${esc(w)}" class="rounded-full bg-zinc-900 px-3 py-1 text-sm hover:bg-zinc-800">${esc(w)} ✕</button>`).join('') || '<span class="text-sm text-zinc-500">None yet.</span>'}</div></section>
+    <section class="border-t border-zinc-800 p-4"><h2 class="text-xl font-extrabold">Maintenance</h2><p class="mt-1 text-sm text-zinc-500">Posts written before topics existed aren’t tagged yet, so they won’t show on topic pages.</p><button data-backfill class="mt-2 ${btnO}">Tag older posts with topics</button></section>` : ''}
     ${me.badge === 'owner' ? growthHTML() : ''}`;
     if (me.badge === 'owner') loadActive();
-  } catch (x) { v.innerHTML = head('Admin panel', '', false) + `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
+  } catch (x) { v.innerHTML = head(title, '', false) + `<p class="p-8 text-center text-red-400">${esc(x.message)}</p>`; }
 }
 
 // ---- Growth tools: owner-only fake followers/likes/reposts/saves/replies ----
@@ -532,7 +574,7 @@ async function profile(v, name, pg) {
   ${u.location || u.website || u.born ? `<p class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-zinc-500">${u.location ? `<span>📍 ${esc(u.location)}</span>` : ''}${u.website ? `<a href="${esc(u.website)}" target="_blank" rel="noopener noreferrer nofollow ugc" class="text-sky-500 hover:underline">🔗 ${esc(u.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''))}</a>` : ''}${u.born ? `<span>🎂 Born ${esc(u.born)}</span>` : ''}</p>` : ''}
   <p class="mt-3 text-sm text-zinc-500">Joined ${new Date(u.joined).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>
   <p class="mt-2 text-sm"><a href="#/u/${esc(u.username)}/following" class="hover:underline"><b data-stat="following" data-val="${u.following}">${fmt(u.following)}</b> <span class="text-zinc-500">Following</span></a> &nbsp; <a href="#/u/${esc(u.username)}/followers" class="hover:underline"><b data-stat="followers" data-val="${u.followers}">${fmt(u.followers)}</b> <span class="text-zinc-500">Followers</span></a></p></div>`
-  + (!u.canSee && !u.blockedBy ? `<div class="border-t border-zinc-800 p-10 text-center"><p class="text-lg font-bold">These posts are protected</p><p class="mt-1 text-zinc-500">Only approved followers can see @${esc(u.username)}’s posts.</p></div>` : u.blockedBy ? `<div class="border-t border-zinc-800 p-10 text-center text-zinc-500">@${esc(u.username)} blocked you. You can’t follow them or see their posts.</div>` : `<div class="ptabs">${ptabs(u.id, 'user')}</div><div class="f"></div>`);
+  + (u.suspended ? `<div class="border-t border-zinc-800 p-10 text-center"><p class="text-lg font-bold">Account suspended</p><p class="mt-1 text-zinc-500">@${esc(u.username)} was suspended for breaking the rules.</p></div>` : !u.canSee && !u.blockedBy ? `<div class="border-t border-zinc-800 p-10 text-center"><p class="text-lg font-bold">These posts are protected</p><p class="mt-1 text-zinc-500">Only approved followers can see @${esc(u.username)}’s posts.</p></div>` : u.blockedBy ? `<div class="border-t border-zinc-800 p-10 text-center text-zinc-500">@${esc(u.username)} blocked you. You can’t follow them or see their posts.</div>` : `<div class="ptabs">${ptabs(u.id, 'user')}</div><div class="f"></div>`);
   const f = v.querySelector('.f');
   if (f) feed(f, 'feed=user:' + u.username, PE.user);
   // Live-refreshes stats in place (animated count) instead of leaving numbers frozen at first load — covers real changes and gradual fake boosts alike.
@@ -913,7 +955,7 @@ addEventListener('visibilitychange', () => !document.hidden && pages[cur]?.refre
 
 function chrome() {
   const cur = location.hash || '#/', prof = me ? '#/u/' + me.username : '';
-  const items = [['home', 'Home', '#/'], ['search', 'Explore', '#/explore'], ...(me ? [['bell', 'Notifications', '#/notifications'], ['mail', 'Messages', '#/messages'], ['lists', 'Lists', '#/lists']] : []), ['users', 'Communities', '#/communities'], ['mark', 'Bookmarks', '#/bookmarks'], ['user', 'Profile', prof], ...(me ? [['chart', 'Analytics', '#/analytics'], ['sliders', 'Settings', '#/settings']] : []), ...(me?.admin ? [['shield', 'Admin', '#/admin']] : [])];
+  const items = [['home', 'Home', '#/'], ['search', 'Explore', '#/explore'], ...(me ? [['bell', 'Notifications', '#/notifications'], ['mail', 'Messages', '#/messages'], ['lists', 'Lists', '#/lists']] : []), ['users', 'Communities', '#/communities'], ['mark', 'Bookmarks', '#/bookmarks'], ['user', 'Profile', prof], ...(me ? [['chart', 'Analytics', '#/analytics'], ['sliders', 'Settings', '#/settings']] : []), ...(me?.admin || me?.mod ? [['shield', 'Admin', '#/admin']] : [])];
   const prim = ['#/', '#/explore', '#/notifications', '#/messages', prof].filter(Boolean); MORE = items.filter((i) => !prim.includes(i[2]));
   const link = ([i, t, hr], big) => `<a href="${hr || '#/'}" ${hr ? '' : 'data-need'} class="${big ? 'flex items-center gap-4 p-3 text-xl' : 'p-2.5'} rounded-full hover:bg-zinc-900 ${cur === hr ? 'font-bold' : 'text-zinc-400'}"><span class="relative">${ic(i, big ? '!h-7 !w-7' : '!h-6 !w-6')}${badge(hr)}</span>${big ? `<span class="hidden xl:inline">${t}</span>` : ''}</a>`;
   $('#nav').innerHTML = items.map((i) => link(i, 1)).join('');
@@ -942,6 +984,7 @@ async function submit(c) {
   if (c.dataset.pollon) fd.append('poll', JSON.stringify({ options: [...c.querySelectorAll('[data-po]')].map((i) => i.value.trim()).filter(Boolean), minutes: c.querySelector('[data-pomin]').value }));
   const sch = c.querySelector('[data-sched]')?.value; if (sch) fd.append('schedule', new Date(sch).toISOString());
   if (c.dataset.rl) fd.append('replyLimit', c.dataset.rl);
+  if (c.dataset.sens && (files.length || c.dataset.gif)) fd.append('sensitive', '1');
   b.disabled = true;
   try {
     const p = await api('/posts', { method: 'POST', body: fd }), inDlg = !!c.closest('dialog');
@@ -1103,9 +1146,17 @@ document.addEventListener('click', async (e) => {
       if (d.um === 'lists') return setTimeout(() => listsDlg(d.un), 250); return relate(d.um, d.un); }
     if (d.block) return relate('block', d.block);
     if (d.ptab) { const v = b.closest('.pg'); v.querySelector('.ptabs').innerHTML = ptabs(v.dataset.uid, d.ptab); const f = v.querySelector('.f'); f.innerHTML = ''; return feed(f, `feed=${d.ptab}:${v.dataset.user}`, PE[d.ptab]); }
-    if ('delacct' in d) { if (!confirm('Delete your account and all your posts forever?')) return; await api('/me', { method: 'DELETE' }); localStorage.removeItem('token'); localStorage.removeItem('me'); location.hash = '#/'; return location.reload(); }
+    if ('delacct' in d) return openDlg(`<form id="daf" class="space-y-3 p-6"><h2 class="text-2xl font-extrabold text-red-500">Delete account</h2><p class="text-sm text-zinc-400">This permanently deletes your account, posts and messages. Enter your password to confirm.</p><input name="password" type="password" required placeholder="Password" class="${inp}"><p class="err text-sm text-red-400"></p><button class="w-full rounded-full bg-red-600 py-2.5 font-bold text-white">Delete everything</button></form>`);
     if (d.ra) { const row = b.closest('[data-rid]'); await api('/admin/reports/' + row.dataset.rid, { method: 'POST', body: JSON.stringify({ action: d.ra }) }); collapse(row); return toast('Done'); }
-    if ('ban' in d) { const row = b.closest('[data-uid]'), on = d.banned !== '1'; await api('/admin/users/' + row.dataset.uid, { method: 'POST', body: JSON.stringify({ banned: on }) }); b.dataset.banned = on ? '1' : '0'; b.textContent = on ? 'Unban' : 'Ban'; return toast(on ? 'User banned' : 'User unbanned'); }
+    if (d.sus === 'open') { const id = b.closest('[data-uid]').dataset.uid; return openDlg(`<form id="susf" data-uid="${id}" class="space-y-3 p-6"><h2 class="text-2xl font-extrabold">Suspend account</h2><label class="block text-sm text-zinc-400">For how long<select name="days" class="${inp} mt-1"><option value="1">1 day</option><option value="7" selected>7 days</option><option value="30">30 days</option><option value="0">Permanent ban</option></select></label><input name="reason" maxlength="200" placeholder="Reason (kept in the moderation log)" class="${inp}"><p class="err text-sm text-red-400"></p><button class="w-full rounded-full bg-red-600 py-2.5 font-bold text-white">Suspend</button></form>`); }
+    if (d.sus === 'lift') { await api(`/admin/users/${b.closest('[data-uid]').dataset.uid}/suspend`, { method: 'POST', body: JSON.stringify({ days: -1 }) }); toast('Suspension lifted'); drop('#/admin'); cur = null; return route(); }
+    if (d.modtoggle !== undefined) { await api(`/admin/users/${b.closest('[data-uid]').dataset.uid}/mod`, { method: 'POST', body: JSON.stringify({ on: d.modtoggle === '1' }) }); drop('#/admin'); cur = null; route(); return toast('Role updated'); }
+    if (d.wfrm) { await api('/admin/filters/' + encodeURIComponent(d.wfrm), { method: 'DELETE' }); drop('#/admin'); cur = null; return route(); }
+    if ('reveal' in d) { REV.add(art?.dataset.id); return void b.parentElement.remove(); }
+    if ('sens' in d) { const c = b.closest('.cmp'); c.dataset.sens = c.dataset.sens ? '' : '1'; b.classList.toggle('text-amber-400', !!c.dataset.sens); b.classList.toggle('font-bold', !!c.dataset.sens); return; }
+    if ('export' in d) { const r = await fetch(API + '/api/me/export', { headers: { Authorization: 'Bearer ' + token } }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Couldn’t export your data'); const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = 'unvia-data.json'; a.click(); return toast('Download started'); }
+    if ('push' in d) { try { await (b.getAttribute('aria-checked') === 'true' ? pushOff() : pushOn()); } catch (x) { toast(x.message, 1); } return settings(pages['#/settings'].el, true); }
+    if ('pushtest' in d) { await api('/push/test', { method: 'POST' }); return toast('Test sent. It should arrive in a moment.'); }
     if (d.stopf) { await api('/admin/fake/stop', { method: 'POST', body: JSON.stringify({ type: d.stopf, id: d.stopid, kind: d.stopkind }) }); toast('Stopped — frozen at the current number'); return loadActive(); }
     if ('login' in d) return openAuth();
     if ('need' in d) { e.preventDefault(); return openAuth(); }
@@ -1155,6 +1206,9 @@ document.addEventListener('submit', async (e) => {
       if (f.dataset.pid) { await api(`/folders/${r.id}/posts/${f.dataset.pid}`, { method: 'POST' }); drop('#/bookmarks'); toast('Saved to folder'); return void folderDlg(f.dataset.pid); }
       dlg.close(); const bp = pages['#/bookmarks']; if (bp && cur === '#/bookmarks') await bp.el._bReload(); else drop('#/bookmarks');
     }
+    if (f.id === 'daf') { await api('/me', { method: 'DELETE', body }); localStorage.removeItem('token'); localStorage.removeItem('me'); location.hash = '#/'; return void location.reload(); }
+    if (f.id === 'susf') { const x = Object.fromEntries(new FormData(f)); await api(`/admin/users/${f.dataset.uid}/suspend`, { method: 'POST', body: JSON.stringify({ days: +x.days, reason: x.reason }) }); dlg.close(); toast('Account suspended'); drop('#/admin'); cur = null; route(); }
+    if (f.id === 'wff') { const w = f.word.value.trim(); if (!w) return; await api('/admin/filters', { method: 'POST', body: JSON.stringify({ word: w }) }); drop('#/admin'); cur = null; route(); }
     if (f.id === 'tf') { const d = await api('/auth/2fa', { method: 'POST', body: JSON.stringify({ ticket: f.dataset.ticket, code: f.code.value }) }); localStorage.token = d.token; localStorage.me = JSON.stringify(d.user); location.reload(); }
     if (f.id === 'fgf') { await api('/auth/forgot', { method: 'POST', body }); f.innerHTML = '<p class="py-6 text-center">If that account has a verified email, a reset link is on its way. It’s valid for 1 hour.</p>'; }
     if (f.id === 'rsf') {
@@ -1228,8 +1282,9 @@ document.addEventListener('change', async (e) => {
 document.addEventListener('change', (e) => { const s = e.target.closest('[data-badge]'); if (s) api('/admin/users/' + s.closest('[data-uid]').dataset.uid, { method: 'POST', body: JSON.stringify({ badge: s.value }) }).then(() => toast('Badge updated')).catch((x) => toast(x.message, 1)); });
 let gtm; document.addEventListener('input', (e) => { if (e.target.id === 'gq') { clearTimeout(gtm); gtm = setTimeout(() => gifs(e.target.value), 400); } });
 document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.target.id === 'sq' || e.target.classList.contains('sq')) && e.target.value.trim()) location.hash = '#/search/' + encodeURIComponent(e.target.value.trim()); });
-document.addEventListener('change', async (e) => { // list / folder checkboxes
+document.addEventListener('change', async (e) => { // list / folder checkboxes, push level
   const t = e.target;
+  if ('pushlvl' in (t.dataset || {})) { try { await api('/me/push', { method: 'PUT', body: JSON.stringify({ level: t.value }) }); me.pushLevel = t.value; localStorage.me = JSON.stringify(me); toast('Saved'); } catch (x) { toast(x.message, 1); } }
   if (t.dataset?.lmtoggle) { try { const r = await api(`/lists/${t.dataset.lmtoggle}/members/${t.dataset.un}`, { method: 'POST' }); toast(r.in ? 'Added to list' : 'Removed from list'); Object.keys(pages).filter((k) => k.startsWith('#/list')).forEach(drop); } catch (x) { t.checked = !t.checked; toast(x.message, 1); } }
   if (t.dataset?.fotoggle) { try { const r = await api(`/folders/${t.dataset.fotoggle}/posts/${t.dataset.pid}`, { method: 'POST' }); toast(r.in ? 'Added to folder' : 'Removed from folder'); drop('#/bookmarks'); } catch (x) { t.checked = !t.checked; toast(x.message, 1); } }
 });
@@ -1294,6 +1349,7 @@ async function flushViews(keep) {
   try { await api('/views', { method: 'POST', body: JSON.stringify({ ids }), keepalive: !!keep }); } catch {}
 }
 setInterval(() => flushViews(), 6000); document.addEventListener('visibilitychange', () => document.hidden && flushViews(true));
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.Capacitor?.isNativePlatform?.()) navigator.serviceWorker.register('/sw.js').catch(() => {}); // enables push + installing to the Home Screen
 applyTheme(); chrome(); route(); sugg(); trend();
 if (token) api('/lists/pinned').then((l) => { if (l.length) { PL = l; drop('#/'); if (cur === '#/') { cur = null; route(); } } }).catch(() => {});
 if (token) { pollUnread(); setInterval(pollUnread, 10000); }

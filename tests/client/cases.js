@@ -36,7 +36,7 @@ MOCK.push(
   ['GET', /^\/api\/conversations\/conv1/, { conv: CONV, messages: [{ id: 'm1', from: 'u2', text: 'hi', image: null, deleted: false, at: ISO }, { id: 'm2', from: 'u1', text: 'yo', image: null, deleted: false, at: ISO }], reads: [{ u: 'u2', at: ISO }], more: false }],
   ['GET', /^\/api\/conversations/, [CONV]], ['GET', /^\/api\/drafts/, [{ id: 'd1', text: 'draft', at: ISO }]], ['GET', /^\/api\/scheduled/, [{ id: 's1', text: 'later', at: ISO }]],
   ['GET', /^\/api\/follow-requests/, [U('u4', 'Dee')]], ['GET', /^\/api\/suggest/, [U('u6', 'Fay')]], ['GET', /^\/api\/trends/, [{ tag: 'js', count: 2 }]],
-  ['GET', /^\/api\/admin\/overview/, { users: 3, posts: 9, openReports: 0, recent: [{ ...U('u2', 'Bob'), banned: false }], reports: [] }], ['GET', /^\/api\/admin\/fake\/active/, { users: [], posts: [] }],
+  ['GET', /^\/api\/admin\/overview/, { users: 3, posts: 9, openReports: 1, recent: [{ ...U('u2', 'Bob'), banned: false, suspended: false, until: null }, { ...U('u7', 'Zed'), mod: true, banned: false, suspended: true, until: ISO }], reports: [{ id: 'r1', kind: 'post', count: 3, reasons: ['Spam', 'Abuse'], by: ['bob', 'dee'], media: true, preview: '@bob: hi' }], modlog: [{ at: ISO, mod: 'alice', action: 'ban', target: '@x', note: 'spam' }], filters: ['badword'] }], ['GET', /^\/api\/admin\/fake\/active/, { users: [], posts: [] }],
   ['POST', /^\/api\/communities\/c1\/join/, { joined: false, requested: true }], ['POST', /^\/api\/communities$/, { id: 'c1' }], ['POST', /^\/api\/lists$/, { id: 'l9' }], ['POST', /^\/api\/folders$/, { id: 'f9' }],
 );
 const run = async (name, fn, feedToo = true) => {
@@ -46,7 +46,7 @@ const run = async (name, fn, feedToo = true) => {
   return v;
 };
 const clickEl = (dataset, o = {}) => { const t = { dataset, tagName: o.tag || 'BUTTON', classList: { contains: () => false }, getAttribute: () => null, ...(o.extra || {}),
-  closest(sel) { const m = { 'button,a': t, '.pg': o.page, article: o.art, '.cmp': o.cmp, '[data-pid]': o.pid, '.notes': o.notes, '[data-uid]': o.row, '[data-fr]': o.fr, '[data-pollbox]': o.pollbox }; return m[sel] ?? null; } }; return t; };
+  closest(sel) { const m = { 'button,a': t, '.pg': o.page, article: o.art, '.cmp': o.cmp, '[data-pid]': o.pid, '.notes': o.notes, '[data-uid]': o.row, '[data-rid]': o.rid, '[data-fr]': o.fr, '[data-pollbox]': o.pollbox }; return m[sel] ?? null; } }; return t; };
 const fire = async (target) => { for (const fn of listeners.click) await fn({ target, preventDefault() {} }); await flush(); };
 const runTimers = async () => { _timeouts.splice(0).forEach((f) => { try { f(); } catch (e) { ok('timer crash', false, e.message); } }); await flush(); };
 const doSubmit = async (f) => { f.classList ||= { contains: () => false }; f.querySelector ||= () => new El(); f.reset ||= () => {}; for (const fn of listeners.submit) await fn({ target: f, preventDefault() {} }); await flush(); };
@@ -112,6 +112,41 @@ const doSubmit = async (f) => { f.classList ||= { contains: () => false }; f.que
   CALLS.length = 0; await fire(clickEl({ backfill: '' })); ok('admin backfill button posts', CALLS.includes('POST /api/admin/backfill-topics'));
   // composer in a community carries the community id
   const cmp = composer('', '', '', '', 'c1'); ok('community composer has data-community', cmp.includes('data-community="c1"'));
+
+
+  // ================= Phase 6 =================
+  const adm1 = await run('admin (owner)', (v) => admin(v)); ok('owner sees filters, maintenance, reset link, log, grouped reports', ['Blocked words', 'Maintenance', 'Reset link', 'Moderation log', '3 reports', 'Mark sensitive'].every((x) => all(adm1).includes(x)));
+  me = { ...meU, admin: false, mod: true, badge: '' };
+  const adm2 = await run('admin (moderator)', (v) => admin(v)); ok('moderator sees reports but not owner tools', all(adm2).includes('3 reports') && !all(adm2).includes('Blocked words') && !all(adm2).includes('Reset link') && !all(adm2).includes('Make mod'));
+  chrome(); ok('moderators get the Admin link', $('#nav').innerHTML.includes('Admin')); me = meU;
+  await fire(clickEl({ sus: 'open' }, { row: { dataset: { uid: 'u2' } } })); ok('suspend dialog opens', dlg.innerHTML.includes('Suspend account') && dlg.innerHTML.includes('Permanent ban'));
+  CALLS.length = 0; await doSubmit({ id: 'susf', dataset: { uid: 'u2' }, _fields: { days: '7', reason: 'spam' } }); ok('suspending posts to the server', CALLS.includes('POST /api/admin/users/u2/suspend'));
+  CALLS.length = 0; await fire(clickEl({ sus: 'lift' }, { row: { dataset: { uid: 'u7' } } })); ok('lifting a suspension', CALLS.includes('POST /api/admin/users/u7/suspend'));
+  CALLS.length = 0; await fire(clickEl({ modtoggle: '1' }, { row: { dataset: { uid: 'u2' } } })); ok('owner can make a moderator', CALLS.includes('POST /api/admin/users/u2/mod'));
+  CALLS.length = 0; await fire(clickEl({ ra: 'sensitive' }, { rid: Object.assign(new El(), { dataset: { rid: 'r1' } }) })); ok('report action posts', CALLS.includes('POST /api/admin/reports/r1'));
+  CALLS.length = 0; await doSubmit({ id: 'wff', word: { value: 'badword' } }); ok('owner adds a blocked word', CALLS.includes('POST /api/admin/filters'));
+  CALLS.length = 0; await fire(clickEl({ wfrm: 'badword' })); ok('owner removes a blocked word', CALLS.includes('DELETE /api/admin/filters/badword'));
+  MOCK.unshift(['GET', /^\/api\/users\/sus$/, { ...U('u8', 'Sus'), joined: ISO, following: 0, followers: 0, posts: 0, isFollowing: false, blocked: false, muted: false, blockedBy: false, requested: false, canSee: true, location: '', website: '', born: '', suspended: true }]);
+  const sp = await run('suspended profile', (v, pg) => profile(v, 'sus', pg), false); ok('suspended account shows a notice, no posts', all(sp).includes('Account suspended') && !all(sp).includes('data-ptab'));
+  const sens = card(post('s1', { images: ['https://x.test/y.jpg'], sensitive: true })); ok('sensitive media sits behind a Show button', sens.includes('Sensitive media · Show') && sens.includes('backdrop-blur-2xl'));
+  let removed = false; await fire(clickEl({ reveal: '' }, { art: { dataset: { id: 's1' } }, extra: { parentElement: { remove() { removed = true; } } } }));
+  ok('Show removes the overlay and remembers the choice', removed && !card(post('s1', { images: ['https://x.test/y.jpg'], sensitive: true })).includes('Sensitive media · Show'));
+  ok('ordinary media has no overlay; composer has the toggle', !card(post('s2', { images: ['https://x.test/y.jpg'] })).includes('Sensitive media') && composer().includes('data-sens'));
+  await fire(clickEl({ delacct: '' })); ok('deleting an account asks for the password', dlg.innerHTML.includes('id="daf"') && dlg.innerHTML.includes('type="password"'));
+  CALLS.length = 0; await doSubmit({ id: 'daf', dataset: {}, _fields: { password: 'pw' } }); ok('delete request carries the password', CALLS.includes('DELETE /api/me'));
+  CALLS.length = 0; await fire(clickEl({ export: '' })); ok('data export downloads', CALLS.includes('GET /api/me/export'));
+  ok('push key decoder', urlB64('BP5').length === 2);
+  pages['#/settings'] = { el: new El() };
+  let curSub = null; const pm = { getSubscription: async () => curSub, subscribe: async () => (curSub = { endpoint: 'https://push.example/1', toJSON() { return { endpoint: this.endpoint, keys: { p256dh: 'k', auth: 'a' } }; }, unsubscribe: async () => { curSub = null; } }) };
+  navigator.serviceWorker = { getRegistration: async () => ({ pushManager: pm }), ready: Promise.resolve({ pushManager: pm }) }; globalThis.PushManager = class {}; globalThis.Notification = { permission: 'default', requestPermission: async () => 'granted' };
+  MOCK.unshift(['GET', /^\/api\/push\/key/, { key: 'BP5' }]);
+  const st1 = await run('settings (push supported)', (v) => settings(v), false); ok('push toggle shown, no level picker yet', all(st1).includes('data-push') && !all(st1).includes('data-pushlvl'));
+  CALLS.length = 0; await fire(clickEl({ push: '' }, { extra: { getAttribute: (k) => (k === 'aria-checked' ? 'false' : null) } })); ok('turning push on subscribes and registers with the server', CALLS.includes('POST /api/push/subscribe') && !!curSub);
+  Notification.permission = 'granted';
+  const st2 = await run('settings (push on)', (v) => settings(v), false); ok('level picker and test button appear once on', all(st2).includes('data-pushlvl') && all(st2).includes('data-pushtest'));
+  CALLS.length = 0; await fire(clickEl({ push: '' }, { extra: { getAttribute: (k) => (k === 'aria-checked' ? 'true' : null) } })); ok('turning push off unsubscribes', CALLS.includes('POST /api/push/unsubscribe') && curSub === null);
+  CALLS.length = 0; for (const fn of listeners.change) await fn({ target: { dataset: { pushlvl: '' }, value: 'important', closest: () => null, classList: { contains: () => false }, type: 'select-one' } }); await flush(); ok('push level is saved', CALLS.includes('PUT /api/me/push'));
+  CALLS.length = 0; await fire(clickEl({ pushtest: '' })); ok('test push can be sent', CALLS.includes('POST /api/push/test'));
 
   const fails = results.filter((r) => !r[1]);
   console.log(`${results.length - fails.length}/${results.length} checks passed`);
