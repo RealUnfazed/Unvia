@@ -1359,6 +1359,8 @@ app.delete('/api/notes/:id', auth, async (req, res) => {
 });
 
 // ---- push subscriptions ----
+// Open /api/health to check routing and the database: {"ok":true} means requests reach the server and MongoDB answered.
+app.get('/api/health', (_q, res) => res.json({ ok: true, push: PUSH, mail: mailReady() }));
 app.get('/api/push/key', (_q, res) => res.json({ key: PUSH ? process.env.VAPID_PUBLIC_KEY : null }));
 app.post('/api/push/subscribe', auth, async (req, res) => {
   const { endpoint, keys } = req.body || {};

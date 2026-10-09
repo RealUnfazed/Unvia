@@ -67,6 +67,14 @@ const eq = (n, g, e) => { total++; if (JSON.stringify(g) !== JSON.stringify(e)) 
   sw = runSw([{ url: 'https://evil.test/', focus: async () => {} }]); e = ev({ notification: { close() {}, data: { url: 'https://evil.test/phish' } } }); sw.handlers.notificationclick(e); await Promise.all(e.ps);
   eq('a tap never reuses a window from another site', sw.opened.length, 1);
 
+  // ---- Vercel API entry (catch-all function) ----
+  const shim = read('api/[...path].js');
+  const viaShim = (req) => { let seen; const ctx = { URL, URLSearchParams, module: { exports: {} }, require: () => (r) => { seen = r.url; } }; vm.createContext(ctx); vm.runInContext(shim, ctx); ctx.module.exports(req, {}); return seen; };
+  eq('shim keeps a normal url', viaShim({ url: '/api/posts?feed=all', query: { path: ['posts'] } }), '/api/posts?feed=all');
+  eq('shim rebuilds a rewritten url from route params', viaShim({ url: '/api/[...path]', query: { path: ['posts', '5'] } }), '/api/posts/5');
+  eq('shim rebuilds when the path only appears in the query string', viaShim({ url: '/api/[...path]?path=users%2Fbob&x=1' }), '/api/users/bob?x=1');
+  eq('server has a health check', server.includes("app.get('/api/health'"), true);
+
   // ---- build + PWA setup ----
   const pkg = JSON.parse(read('package.json')), man = JSON.parse(read('public/manifest.webmanifest')), vc = JSON.parse(read('vercel.json'));
   eq('css build script', /tailwindcss .*src\/input\.css.*public\/tailwind\.css.*--minify/.test(pkg.scripts['build:css']), true);
