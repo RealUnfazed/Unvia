@@ -1,4 +1,7 @@
 {
+  "framework": null,
   "buildCommand": "npm run build:css",
+  "outputDirectory": "public",
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api" }],
   "headers": [{ "source": "/sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }]
 }
