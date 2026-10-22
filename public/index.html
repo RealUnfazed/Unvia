@@ -178,7 +178,7 @@ async function api(path, o = {}) {
 
 const av = (u, c = 'h-10 w-10') => `<a href="#/u/${esc(u?.username)}" class="${c} grid shrink-0 place-items-center rounded-full font-bold text-white" style="background:hsl(${hue(u?.username)} 55% 42%)">${u?.avatar ? `<img src="${esc(u.avatar)}" class="h-full w-full rounded-full object-cover">` : esc((u?.name || '?')[0].toUpperCase())}</a>`;
 const fbtn = (u, on, req) => `<button data-follow="${esc(u)}" class="rounded-full px-4 py-1.5 text-sm font-bold ${on || req ? 'border border-zinc-600 text-zinc-100 hover:border-red-500 hover:text-red-500' : 'bg-white text-black hover:bg-zinc-200'}">${on ? 'Following' : req ? 'Requested' : 'Follow'}</button>`;
-const btn = (act, n, h, on = '', fill = false) => `<button data-act="${act}" class="flex items-center gap-1.5 rounded-full p-2 relative ${h} ${h.replace('text-', 'bg-')}/10 ${on || ''}">${ic({ like: 'heart', bookmark: 'mark', del: 'trash' }[act] || act, '', fill)}${n ? `<span class="cnt" data-val="${n}">${fmt(n)}</span>` : ''}</button>`;
+const btn = (act, n, h, on = '', fill = false) => `<button data-act="${act}" class="flex min-w-0 max-w-full items-center justify-self-start gap-1 rounded-full p-1.5 relative ${h} ${h.replace('text-', 'bg-')}/10 ${on || ''}">${ic({ like: 'heart', bookmark: 'mark', del: 'trash' }[act] || act, '', fill)}${n ? `<span class="cnt min-w-0 truncate text-[13px]" data-val="${n}">${fmt(n)}</span>` : ''}</button>`;
 const guest = () => '<div class="p-10 text-center"><p class="mb-4 text-zinc-400">Log in to see this.</p><button data-login class="rounded-full bg-sky-500 px-6 py-2 font-bold text-white">Log in</button></div>';
 const head = (t, sub = '', back = true) => `<div class="sticky top-0 z-10 flex items-center gap-6 bg-black/80 px-4 py-2 backdrop-blur">${back ? `<button data-back class="rounded-full p-2 hover:bg-zinc-900">${ic('back')}</button>` : ''}<div><h1 class="text-xl font-bold leading-tight">${t}</h1>${sub ? `<div class="text-xs text-zinc-500">${sub}</div>` : ''}</div></div>`;
 
@@ -254,14 +254,13 @@ const card = (p) => { P[p.id] = p; const a = p.author || {}; return `<article da
   ${p.repostBy ? `<div class="mb-1 ml-12 flex items-center gap-2 text-xs font-bold text-zinc-500">${ic('repost', '!h-3.5 !w-3.5')}${esc(p.repostBy.name)} reposted</div>` : ''}
   ${p.community ? `<div class="mb-1 ml-12 flex items-center gap-2 text-xs font-bold text-zinc-500">${ic('users', '!h-3.5 !w-3.5')}<a href="#/c/${p.community.id}" class="hover:underline">${esc(p.community.name)}</a></div>` : ''}
   <div class="flex gap-3">${av(a)}<div class="min-w-0 flex-1">
-    <div class="flex gap-1 text-[15px]"><a href="#/u/${esc(a.username)}" class="truncate font-bold hover:underline">${esc(a.name)}${bdg(a)}</a><span class="truncate text-zinc-500">@${esc(a.username)} · ${ago(p.at)}${p.edited ? ' · Edited' : ''}</span></div>
+    <div class="flex items-center gap-1 text-[15px]"><a href="#/u/${esc(a.username)}" class="truncate font-bold hover:underline">${esc(a.name)}${bdg(a)}</a><span class="truncate text-zinc-500">@${esc(a.username)} · ${ago(p.at)}${p.edited ? ' · Edited' : ''}</span><span class="-mr-2 ml-auto shrink-0">${btn('more', '', 'hover:text-sky-500')}</span></div>
     <p class="whitespace-pre-wrap break-words text-[15px]">${linkify(p.text)}</p>
     ${gallery(p)}${pollBlock(p)}${previewCard(p.preview)}
     ${p.quoted ? quoteEmbed(p.quoted) : ''}${noteBlock(p)}
-    <div class="-ml-2 mt-1 flex max-w-md justify-between text-sm text-zinc-500">
+    <div class="-ml-1.5 mt-1 grid max-w-md grid-cols-5 text-sm text-zinc-500">
       ${btn('reply', p.replies, 'hover:text-sky-500', p.canReply === false && 'opacity-40')}${btn('repost', p.reposts, 'hover:text-emerald-500', p.reposted && 'text-emerald-500')}
       ${btn('like', p.likes, 'hover:text-pink-600', p.liked && 'text-pink-600', p.liked)}${btn('views', p.views, 'hover:text-sky-500')}${btn('bookmark', p.saves || '', 'hover:text-sky-500', p.bookmarked && 'text-sky-500', p.bookmarked)}
-      ${btn('more', '', 'hover:text-sky-500')}
     </div></div></div></article>`; };
 
 const composer = (parent = '', quote = '', text = '', draft = '', community = '') => `<div class="cmp flex gap-3 p-4" data-parent="${parent}" data-quote="${quote}" data-draft="${draft}" data-community="${community}" data-rl="">${av(me)}<div class="relative min-w-0 flex-1">
@@ -302,7 +301,7 @@ function syncCounts(p) {
     [['reply', p.replies], ['repost', p.reposts], ['like', p.likes], ['bookmark', p.saves], ['views', p.views]].forEach(([act, n]) => {
       const b = art.querySelector(`[data-act="${act}"]`); if (!b) return;
       let cnt = b.querySelector('.cnt');
-      if (n) { if (!cnt) { b.insertAdjacentHTML('beforeend', '<span class="cnt" data-val="0"></span>'); cnt = b.querySelector('.cnt'); } animateCount(cnt, n); }
+      if (n) { if (!cnt) { b.insertAdjacentHTML('beforeend', '<span class="cnt min-w-0 truncate text-[13px]" data-val="0"></span>'); cnt = b.querySelector('.cnt'); } animateCount(cnt, n); }
       else cnt?.remove();
     });
     [['like', 'liked', 'text-pink-600', true], ['repost', 'reposted', 'text-emerald-500', false], ['bookmark', 'bookmarked', 'text-sky-500', true]].forEach(([act, key, cls, fill]) => {

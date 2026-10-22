@@ -114,6 +114,15 @@ const doSubmit = async (f) => { f.classList ||= { contains: () => false }; f.que
   const cmp = composer('', '', '', '', 'c1'); ok('community composer has data-community', cmp.includes('data-community="c1"'));
 
 
+  // ---- action row layout: equal columns so posts line up whatever the counts are ----
+  const row = (x) => card(post('lay', x)), rowOf = (html) => html.slice(html.indexOf('grid-cols-5'));
+  const big = row({ replies: 0, reposts: 8624, likes: 736487, views: 4335888, saves: 121021 }), tiny = row({ replies: 1, reposts: 0, likes: 3, views: 0, saves: 0 });
+  ok('action row is a 5-column grid (no justify-between)', big.includes('grid-cols-5') && !big.includes('max-w-md justify-between'));
+  ok('every action is in the row for both big and tiny counts', ['reply', 'repost', 'like', 'views', 'bookmark'].every((a) => rowOf(big).includes(`data-act="${a}"`) && rowOf(tiny).includes(`data-act="${a}"`)));
+  ok('⋯ menu lives in the header, not the action row', !rowOf(big).includes('data-act="more"') && big.slice(0, big.indexOf('grid-cols-5')).includes('data-act="more"'));
+  ok('counts truncate instead of overflowing; buttons stay inside their column', rowOf(big).includes('min-w-0 truncate') && rowOf(big).includes('justify-self-start') && rowOf(big).includes('max-w-full'));
+  ok('big numbers are compacted (max 4 characters)', ['8.6K', '736K', '4.3M', '121K'].every((n) => big.includes(n)));
+
   // ================= Phase 6 =================
   const adm1 = await run('admin (owner)', (v) => admin(v)); ok('owner sees filters, maintenance, reset link, log, grouped reports', ['Blocked words', 'Maintenance', 'Reset link', 'Moderation log', '3 reports', 'Mark sensitive'].every((x) => all(adm1).includes(x)));
   me = { ...meU, admin: false, mod: true, badge: '' };
