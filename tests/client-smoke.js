@@ -6,7 +6,7 @@ const m = html.match(/<script>\n([\s\S]*?)<\/script>/);
 if (!m) { console.log('could not find the app script in public/index.html'); process.exit(1); }
 const read = (f) => fs.readFileSync(path.join(__dirname, 'client', f), 'utf8');
 const out = path.join(os.tmpdir(), 'unvia-client-smoke.js');
-fs.writeFileSync(out, read('stubs.js') + '\n' + m[1] + '\n' + read('cases.js'));
+fs.writeFileSync(out, `globalThis.html_ = ${JSON.stringify(html)};\n` + read('stubs.js') + '\n' + m[1] + '\n' + read('cases.js'));
 const r = spawnSync(process.execPath, [out], { encoding: 'utf8' });
 process.stdout.write(r.stdout); process.stderr.write(r.stderr);
 process.exit(r.status || 0);

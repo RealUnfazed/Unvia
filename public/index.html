@@ -38,6 +38,9 @@ aside{scrollbar-width:none}
 .cnt{display:inline-block;font-variant-numeric:tabular-nums}
 @keyframes grow{from{width:0}}.bar{animation:grow .8s cubic-bezier(.2,.8,.2,1)}
 .in-dm button.fixed{display:none}
+.navtop{scrollbar-width:none;overscroll-behavior:contain}.navtop::-webkit-scrollbar{display:none}
+@media (max-height:800px){#nav a,#nav button{padding:.5rem .75rem!important;font-size:1.1rem!important}#nav svg{height:1.5rem!important;width:1.5rem!important}.navtop>a:first-child{height:2.5rem!important}}
+@media (max-height:640px){#nav a,#nav button{padding:.3rem .6rem!important;font-size:1rem!important}#nav svg{height:1.35rem!important;width:1.35rem!important}.navtop [data-compose]{margin-top:.5rem!important;height:2.5rem!important}}
 .dmfoot{position:sticky;bottom:calc(2.85rem + env(safe-area-inset-bottom))}@media (min-width:640px){.dmfoot{bottom:0}}
 /* themes: dim + light remap the app's neutral colors; the default (dark) needs no overrides */
 html[data-theme=dim]{color-scheme:dark}
@@ -100,11 +103,11 @@ html[data-theme=light] .skl::after{background:linear-gradient(90deg,transparent,
 </head>
 <body class="min-h-screen bg-black text-zinc-100 antialiased" style="padding-top:env(safe-area-inset-top)">
 <div class="mx-auto flex max-w-[1265px] justify-center">
-  <header class="sticky top-0 hidden h-screen w-[68px] shrink-0 flex-col justify-between px-1 py-2 sm:flex xl:w-[260px] xl:px-3">
-    <div><a href="#/" class="flex h-12 w-12 items-center gap-2 rounded-full px-2 hover:bg-zinc-900 xl:w-full xl:px-3"><svg viewBox="0 0 24 24" class="h-8 w-8 shrink-0 text-sky-400" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v9a6 6 0 0 0 12 0V4"/></svg><span class="hidden text-xl font-extrabold xl:inline">Unvia</span></a>
+  <header class="sticky top-0 hidden h-screen w-[68px] shrink-0 flex-col justify-between gap-2 px-1 py-2 sm:flex xl:w-[260px] xl:px-3">
+    <div class="navtop min-h-0 flex-1 overflow-y-auto"><a href="#/" class="flex h-12 w-12 items-center gap-2 rounded-full px-2 hover:bg-zinc-900 xl:w-full xl:px-3"><svg viewBox="0 0 24 24" class="h-8 w-8 shrink-0 text-sky-400" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v9a6 6 0 0 0 12 0V4"/></svg><span class="hidden text-xl font-extrabold xl:inline">Unvia</span></a>
       <nav id="nav"></nav>
       <button data-compose class="mt-4 grid h-12 w-12 place-items-center rounded-full bg-sky-500 font-bold text-white hover:bg-sky-400 xl:w-full"><span class="xl:hidden">＋</span><span class="hidden xl:inline">Post</span></button></div>
-    <div id="acct" class="pb-2"></div>
+    <div id="acct" class="shrink-0 pb-2"></div>
   </header>
   <main class="min-h-screen w-full max-w-[600px] border-x border-zinc-800 pb-20 sm:pb-0"><div id="view"></div></main>
   <aside class="sticky top-0 hidden h-screen w-[350px] shrink-0 overflow-y-auto px-6 py-3 lg:block"><div class="space-y-4">
@@ -145,7 +148,7 @@ function fmt(n) {
   }
   return neg + abs.toLocaleString('en-US');
 }
-let PL = [], MORE = [];
+let PL = [], MORE = [], DMORE = [];
 let token = localStorage.token, me = JSON.parse(localStorage.me || 'null'), tab = 'all', reg = false, cur, poll, unread = 0, dmUnread = 0;
 const pages = {};
 // Smoothly counts from the last displayed value to `n`, formatting at every frame — always a real number mid-flight, never a mismatched unit like a stray "K" flashing before an "M".
@@ -957,7 +960,8 @@ function chrome() {
   const items = [['home', 'Home', '#/'], ['search', 'Explore', '#/explore'], ...(me ? [['bell', 'Notifications', '#/notifications'], ['mail', 'Messages', '#/messages'], ['lists', 'Lists', '#/lists']] : []), ['users', 'Communities', '#/communities'], ['mark', 'Bookmarks', '#/bookmarks'], ['user', 'Profile', prof], ...(me ? [['chart', 'Analytics', '#/analytics'], ['sliders', 'Settings', '#/settings']] : []), ...(me?.admin || me?.mod ? [['shield', 'Admin', '#/admin']] : [])];
   const prim = ['#/', '#/explore', '#/notifications', '#/messages', prof].filter(Boolean); MORE = items.filter((i) => !prim.includes(i[2]));
   const link = ([i, t, hr], big) => `<a href="${hr || '#/'}" ${hr ? '' : 'data-need'} class="${big ? 'flex items-center gap-4 p-3 text-xl' : 'p-2.5'} rounded-full hover:bg-zinc-900 ${cur === hr ? 'font-bold' : 'text-zinc-400'}"><span class="relative">${ic(i, big ? '!h-7 !w-7' : '!h-6 !w-6')}${badge(hr)}</span>${big ? `<span class="hidden xl:inline">${t}</span>` : ''}</a>`;
-  $('#nav').innerHTML = items.map((i) => link(i, 1)).join('');
+  const dprim = ['#/', '#/explore', '#/notifications', '#/messages', '#/lists', '#/bookmarks', '#/communities', prof]; DMORE = items.filter((i) => !dprim.includes(i[2]));
+  $('#nav').innerHTML = items.filter((i) => dprim.includes(i[2])).map((i) => link(i, 1)).join('') + (DMORE.length ? `<button data-more="desk" aria-label="More" class="flex items-center gap-4 rounded-full p-3 text-xl text-zinc-400 hover:bg-zinc-900">${ic('menu', '!h-7 !w-7')}<span class="hidden xl:inline">More</span></button>` : '');
   $('#tabs').innerHTML = items.filter((i) => prim.includes(i[2])).map((i) => link(i)).join('') + `<button data-more aria-label="More" class="rounded-full p-2.5 text-zinc-400 hover:bg-zinc-900">${ic('menu', '!h-6 !w-6')}</button>`;
   $('#acct').innerHTML = me ? `<div class="flex items-center gap-3 rounded-full p-2 hover:bg-zinc-900">${av(me)}<div class="hidden min-w-0 flex-1 leading-tight xl:block"><div class="truncate font-bold">${esc(me.name)}</div><div class="truncate text-sm text-zinc-500">@${esc(me.username)}</div></div><button data-out class="hidden text-sm text-zinc-500 hover:text-zinc-100 xl:block">Log out</button></div>` : '<button data-login class="rounded-full bg-sky-500 px-5 py-2 font-bold text-white">Log in</button>';
 }
@@ -1029,7 +1033,7 @@ document.addEventListener('click', async (e) => {
     if ('logoutall' in d) { if (!confirm('Log out of every other device? This one stays signed in.')) return; const r = await api('/me/logout-all', { method: 'POST' }); token = localStorage.token = r.token; return toast('Signed out of all other devices'); }
     if ('copycodes' in d) { navigator.clipboard?.writeText(CODES.join('\n')); return toast('Copied'); }
     if ('codesdone' in d) return dlg.close();
-    if ('more' in d) return openDlg(`<div class="p-2">${MORE.map(([i, t, hr]) => `<a href="${hr || '#/'}" ${hr ? '' : 'data-need'} class="flex items-center gap-4 rounded-xl px-4 py-3 text-lg font-semibold hover:bg-zinc-900">${ic(i, '!h-6 !w-6')}${t}</a>`).join('')}</div>`);
+    if ('more' in d) return openDlg(`<div class="p-2">${(d.more === 'desk' ? DMORE : MORE).map(([i, t, hr]) => `<a href="${hr || '#/'}" ${hr ? '' : 'data-need'} class="flex items-center gap-4 rounded-xl px-4 py-3 text-lg font-semibold hover:bg-zinc-900">${ic(i, '!h-6 !w-6')}${t}</a>`).join('')}</div>`);
     if (d.extab) return b.closest('.pg')._exTab(d.extab);
     if (d.rate !== undefined) { await api(`/notes/${d.nid}/rate`, { method: 'POST', body: JSON.stringify({ v: +d.rate }) }); const box = b.closest('.notes'); return loadNotes(box.closest('.pg'), box.dataset.pid); }
     if (d.ndel) { if (!confirm('Delete your note?')) return; await api('/notes/' + d.ndel, { method: 'DELETE' }); const box = b.closest('.notes'); return loadNotes(box.closest('.pg'), box.dataset.pid); }

@@ -55,8 +55,11 @@ const doSubmit = async (f) => { f.classList ||= { contains: () => false }; f.que
   const _t = toast; toast = (m, e) => { if (e) console.log('  TOAST(error):', m); return _t(m, e); };
   me = meU; token = 't'; PL = [{ id: 'l1', name: 'My <b>list</b>' }];
   chrome(); const nav = $('#nav').innerHTML, tabs = $('#tabs').innerHTML;
-  ok('nav has new entries', ['Explore', 'Lists', 'Communities', 'Analytics', 'Messages'].every((x) => nav.includes(x)));
+  ok('desktop sidebar: main items shown', ['Explore', 'Lists', 'Communities', 'Messages', 'Bookmarks', 'Profile'].every((x) => nav.includes(x)));
+  ok('desktop sidebar: Analytics/Settings/Admin live under More', !nav.includes('#/analytics') && !nav.includes('#/settings') && nav.includes('data-more="desk"') && DMORE.map((i) => i[1]).join() === 'Analytics,Settings,Admin');
+  ok('sidebar scrolls on short screens with the account pinned', html_.includes('navtop min-h-0 flex-1 overflow-y-auto') && html_.includes('id="acct" class="shrink-0') && html_.includes('@media (max-height:800px)') && html_.includes('@media (max-height:640px)'));
   ok('mobile tabs: primary + More', tabs.includes('data-more') && tabs.includes('#/explore') && !tabs.includes('#/lists'));
+  await fire(clickEl({ more: 'desk' })); ok('desktop More menu lists Analytics, Settings, Admin', ['Analytics', 'Settings', 'Admin'].every((x) => dlg.innerHTML.includes(x)) && !dlg.innerHTML.includes('Explore'));
   // ---- card ----
   const c = card(post()); bad('card', c);
   ok('card shows views, community label, note, verified+lock', c.includes('data-act="views"') && c.includes('Devs') && c.includes('Readers added context') && c.includes('Protected account'));
@@ -127,7 +130,7 @@ const doSubmit = async (f) => { f.classList ||= { contains: () => false }; f.que
   const adm1 = await run('admin (owner)', (v) => admin(v)); ok('owner sees filters, maintenance, reset link, log, grouped reports', ['Blocked words', 'Maintenance', 'Reset link', 'Moderation log', '3 reports', 'Mark sensitive'].every((x) => all(adm1).includes(x)));
   me = { ...meU, admin: false, mod: true, badge: '' };
   const adm2 = await run('admin (moderator)', (v) => admin(v)); ok('moderator sees reports but not owner tools', all(adm2).includes('3 reports') && !all(adm2).includes('Blocked words') && !all(adm2).includes('Reset link') && !all(adm2).includes('Make mod'));
-  chrome(); ok('moderators get the Admin link', $('#nav').innerHTML.includes('Admin')); me = meU;
+  chrome(); ok('moderators get the Admin link (under More)', DMORE.some((i) => i[1] === 'Admin') && !DMORE.some((i) => i[1] === 'Settings') === false); me = meU; chrome();
   await fire(clickEl({ sus: 'open' }, { row: { dataset: { uid: 'u2' } } })); ok('suspend dialog opens', dlg.innerHTML.includes('Suspend account') && dlg.innerHTML.includes('Permanent ban'));
   CALLS.length = 0; await doSubmit({ id: 'susf', dataset: { uid: 'u2' }, _fields: { days: '7', reason: 'spam' } }); ok('suspending posts to the server', CALLS.includes('POST /api/admin/users/u2/suspend'));
   CALLS.length = 0; await fire(clickEl({ sus: 'lift' }, { row: { dataset: { uid: 'u7' } } })); ok('lifting a suspension', CALLS.includes('POST /api/admin/users/u7/suspend'));
