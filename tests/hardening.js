@@ -1,7 +1,8 @@
 // Production-readiness checks: rate limiter, moderation rules, push helpers, the service worker, and the build/PWA setup.
+const { stmt, serverSrc } = require('./lib/source');
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const root = path.join(__dirname, '..'), read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
-const server = read('server.js'), html = read('public/index.html');
+const server = serverSrc(), html = read('public/index.html'), srcOf = (f) => read('server/' + f);
 const need = (src, s) => { const i = src.indexOf(s); if (i < 0) throw new Error(`test anchor not found: ${s}`); return i; };
 const slice = (src, from, to) => { const a = need(src, from); return src.slice(a, need(src.slice(a), to) + a); };
 const line = (src, from) => { const a = need(src, from); return src.slice(a, src.indexOf('\n', a)); };
@@ -11,7 +12,7 @@ const eq = (n, g, e) => { total++; if (JSON.stringify(g) !== JSON.stringify(e)) 
 
 (async () => {
   // ---- rate limiter ----
-  const rl = load(slice(server, 'const clientIp = ', 'const dbStore') + '\n' + line(server, 'const mem = new Map()') + '\n' + line(server, 'const memAllow = '), ['clientIp', 'hit', 'memAllow']);
+  const rlSrc = srcOf('lib/ratelimit.js'), rl = load(['const clientIp = ', 'async function hit', 'const mem = new Map()', 'const memAllow = '].map((a) => stmt(rlSrc, a)).join('\n'), ['clientIp', 'hit', 'memAllow']);
   const mkStore = () => { const m = new Map(); return async (id) => { m.set(id, (m.get(id) || 0) + 1); return m.get(id); }; };
   const rule = { name: 't', max: 3, sec: 60 }, st = mkStore(), t0 = 1000000000000, res = [];
   for (let i = 0; i < 4; i++) res.push(await rl.hit(st, rule, 'ip1', t0));
@@ -24,17 +25,17 @@ const eq = (n, g, e) => { total++; if (JSON.stringify(g) !== JSON.stringify(e)) 
   eq('platform header wins', rl.clientIp({ headers: { 'x-vercel-forwarded-for': '9.9.9.9', 'x-forwarded-for': '1.2.3.4' }, socket: {} }), '9.9.9.9');
   eq('falls back to socket', rl.clientIp({ headers: {}, socket: { remoteAddress: '::1' } }), '::1'); eq('unknown when nothing', rl.clientIp({ headers: {}, socket: {} }), 'unknown');
   eq('in-memory burst guard', [1, 2, 3, 4].map(() => rl.memAllow('8.8.8.8', 3)), [true, true, true, false]);
-  const { RULES } = load(slice(server, 'const RULES = [', 'const mem = new Map()'), ['RULES']);
+  const { RULES } = load(stmt(rlSrc, 'const RULES = ['), ['RULES']);
   const which = (m, p) => RULES.filter(([mm, re]) => mm === m && re.test(p)).map((r) => r[2]), oid = 'a'.repeat(24);
   eq('login limited', which('POST', '/api/auth/login'), ['login']); eq('likes limited', which('POST', `/api/posts/${oid}/like`), ['react']); eq('posting limited', which('POST', '/api/posts'), ['post']);
   eq('DMs limited', which('POST', `/api/conversations/${oid}/messages`), ['dm']); eq('export limited', which('GET', '/api/me/export'), ['export']); eq('views limited', which('POST', '/api/views'), ['views']);
   eq('feeds are not rule-limited', which('GET', '/api/posts'), []); eq('profile reads are not rule-limited', which('GET', '/api/users/bob'), []);
 
   // ---- moderation ----
-  const { wordRe } = load(line(server, 'const wordRe = '), ['wordRe']);
+  const modSrc = srcOf('lib/moderation.js'), { wordRe } = load(stmt(modSrc, 'const wordRe = '), ['wordRe']);
   const re = wordRe(['bad', 'c++', 'a.b']);
   eq('blocked word hit', re.test('so bad!'), true); eq('no substring hit', re.test('badge'), false); eq('special characters are literal', re.test('I use c++ daily'), true); eq('dot is not a wildcard', re.test('axb'), false); eq('empty list matches nothing', wordRe([]), null);
-  const mod = load(line(server, 'const isSuspended') + '\n' + line(server, 'const canActOn'), ['isSuspended', 'canActOn']), now = new Date(), future = new Date(Date.now() + 864e5), past = new Date(Date.now() - 864e5);
+  const mod = load(stmt(modSrc, 'const isSuspended') + '\n' + stmt(modSrc, 'const canActOn'), ['isSuspended', 'canActOn']), now = new Date(), future = new Date(Date.now() + 864e5), past = new Date(Date.now() - 864e5);
   eq('banned is suspended', mod.isSuspended({ banned: true }), true); eq('timed suspension active', mod.isSuspended({ suspendedUntil: future }), true);
   eq('expired suspension is over', mod.isSuspended({ suspendedUntil: past }), false); eq('normal account', mod.isSuspended({}), false);
   const owner = { id: 'o', admin: true }, moderator = { id: 'm', mod: true }, user = { id: 'u' };
@@ -43,7 +44,7 @@ const eq = (n, g, e) => { total++; if (JSON.stringify(g) !== JSON.stringify(e)) 
   eq('owner can act on a mod', mod.canActOn(owner, moderator), true);
 
   // ---- push helpers ----
-  const push = load(slice(server, 'const IMPORTANT', 'async function pushTo'), ['pushAllowed', 'snip', 'pushText']);
+  const ntSrc = srcOf('lib/notify.js'), push = load(['const IMPORTANT', 'const pushAllowed', 'const snip', 'const pushText'].map((a) => stmt(ntSrc, a)).join('\n'), ['pushAllowed', 'snip', 'pushText']);
   eq('"important" skips likes', push.pushAllowed('important', 'like'), false); eq('"important" keeps replies and DMs', [push.pushAllowed('important', 'reply'), push.pushAllowed('important', 'dm')], [true, true]);
   eq('"all" sends likes', push.pushAllowed('all', 'like'), true); eq('follow text', push.pushText('follow', 'Bob', ''), ['Bob followed you', '']);
   eq('note text is anonymous', push.pushText('note', 'Bob', 'ctx')[0], 'Readers added context to your post'); eq('unknown type', push.pushText('nope', 'Bob', ''), undefined);

@@ -1,6 +1,7 @@
 // Pure-logic tests. Functions are pulled straight out of the source files, so there is no copy to drift out of date.
 const fs = require('fs'), path = require('path'), vm = require('vm'), crypto = require('crypto'), net = require('net');
-const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8'), client = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+const client = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+const { read, stmt } = require('./lib/source');
 const need = (src, s) => { const i = src.indexOf(s); if (i < 0) throw new Error(`test anchor not found: ${s}`); return i; };
 const slice = (src, from, to) => { const a = need(src, from); return src.slice(a, need(src.slice(a), to) + a); };
 const line = (src, from) => { const a = need(src, from); return src.slice(a, src.indexOf('\n', a)); };
@@ -9,12 +10,12 @@ let fails = 0, total = 0;
 const eq = (n, g, e) => { total++; if (JSON.stringify(g) !== JSON.stringify(e)) { fails++; console.log('  FAIL', n, JSON.stringify(g), 'expected', JSON.stringify(e)); } };
 
 // link-preview SSRF guard
-const { isPrivateIp } = load(slice(server, 'const isPrivateIp', 'async function safeGet'), ['isPrivateIp']);
+const { isPrivateIp } = load(stmt(read('server/lib/linkpreview.js'), 'const isPrivateIp'), ['isPrivateIp']);
 for (const ip of ['127.0.0.1', '10.0.0.5', '192.168.1.1', '172.16.0.1', '172.31.255.1', '169.254.169.254', '0.0.0.0', '100.64.0.1', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1']) eq('private ' + ip, isPrivateIp(ip), true);
 for (const ip of ['8.8.8.8', '1.1.1.1', '172.32.0.1', '93.184.216.34', '2606:4700::1111']) eq('public ' + ip, isPrivateIp(ip), false);
 
 // TOTP against RFC 4226 / 6238 vectors
-const t = load(slice(server, 'const sha = (x)', '// Repeated wrong passwords'), ['sha', 'safeEq', 'b32enc', 'b32dec', 'hotp', 'totpOk']);
+const sec = read('server/lib/security.js'), t = load(['const sha = ', 'const safeEq', 'const B32', 'const b32enc', 'const b32dec', 'const hotp', 'const totpOk'].map((a) => stmt(sec, a)).join('\n'), ['sha', 'safeEq', 'b32enc', 'b32dec', 'hotp', 'totpOk']);
 const secret = t.b32enc(Buffer.from('12345678901234567890'));
 eq('base32', secret, 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ');
 ['755224', '287082', '359152', '969429', '338314', '254676', '287922', '162583', '399871', '520489'].forEach((v, i) => eq('HOTP ' + i, t.hotp(secret, i), v));
@@ -24,7 +25,7 @@ eq('current window', t.totpOk(secret, t.hotp(secret, now)), true); eq('previous 
 eq('letters rejected', t.totpOk(secret, 'abcdef'), false); eq('short code rejected', t.totpOk(secret, '12345'), false); eq('sha256', t.sha('abc'), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
 
 // direct messages: unread, requests, visibility
-const dm = load([line(server, 'const has = (a, id) =>'), line(server, 'const pub = '), slice(server, 'const readOf = ', 'async function markRead'), slice(server, 'const convShape = ', 'async function myConv'), slice(server, '// is this chat visible to me', "app.get('/api/conversations', auth")].join('\n'), ['convShape', 'convVisible']);
+const dmSrc = read('server/lib/dm.js'), dm = load([stmt(read('server/lib/util.js'), 'const has = '), stmt(read('server/lib/shape.js'), 'const pub = '), stmt(dmSrc, 'const readOf = '), stmt(dmSrc, 'const convShape = '), stmt(dmSrc, 'const convVisible')].join('\n'), ['convShape', 'convVisible']);
 const me = { id: 'A' }, U = (id, n) => ({ _id: id, id, name: n, username: n.toLowerCase() }), T = (n) => new Date(2026, 0, 1, 12, n);
 const c = { id: 'c1', group: false, members: [U('A', 'Ann'), U('B', 'Bob')], reads: [{ u: 'A', at: T(1) }], lastAt: T(5), lastFrom: 'B', lastText: 'hi' };
 eq('dm unread', dm.convShape(c, me).unread, true); c.reads = [{ u: 'A', at: T(6) }]; eq('dm read clears unread', dm.convShape(c, me).unread, false);
@@ -38,7 +39,7 @@ const cl = { group: false, members: [U('A', 'Ann'), U('C', 'Cy')], reads: [{ u: 
 eq('cleared chat hidden', dm.convVisible(cl, me, new Set()), false); cl.lastAt = T(9); eq('new message revives it', dm.convVisible(cl, me, new Set()), true);
 
 // topics and community notes
-const tp = load(slice(server, 'const TOPICS = [', '// Request-to-join communities') + '\nconst NOTE_MIN = 5;\n' + line(server, 'const noteScore = '), ['topicsOf', 'noteScore']);
+const topSrc = read('server/lib/topics.js'), tp = load(stmt(topSrc, 'const TOPICS = [') + '\n' + stmt(topSrc, 'const topicsOf') + '\nconst NOTE_MIN = 5;\n' + stmt(read('server/lib/notes.js'), 'const noteScore'), ['topicsOf', 'noteScore']);
 eq('topic by word', tp.topicsOf('Just shipped a new JavaScript library'), ['technology']); eq('topic by hashtag', tp.topicsOf('great #football match tonight'), ['sports']);
 eq('no substring matches', tp.topicsOf('smartphone fantastic'), []); eq('topics capped at 3', tp.topicsOf('football music game science art food travel').length, 3);
 const R = (...v) => ({ ratings: v.map((x, i) => ({ u: i, v: x })) });

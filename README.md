@@ -103,6 +103,22 @@ capacitor.config.json  Mobile shell
 | 6. Production | Rate limiting, Tailwind build (no CDN), moderation tools, push notifications | Done |
 | Later / needs external services | Spaces (live audio needs WebRTC infrastructure), video posts (needs video hosting), Premium and payouts (needs a payment provider) | Backlog |
 
+## Project structure
+
+```
+server.js                 entry point (local + what api/index.js hands to Vercel)
+server/
+  index.js                builds the app: middleware first, then every routes file, then finalize.js
+  app.js  config.js  db.js  models.js  middleware.js  finalize.js
+  lib/                    shared logic, one topic per file (shape, visibility, moderation, notify, security, ratelimit, uploads, ...)
+  routes/                 one file per feature: auth, account, posts, users, conversations (DMs), lists, communities, notes, ...
+api/                      Vercel function entry points
+public/                   the web app (index.html, service worker, manifest, icons)
+tests/                    npm test
+```
+
+**Adding an API endpoint:** put it in the matching file in `server/routes/` (or create one and add its `require` line to `server/index.js`; routes that overlap, like `/api/posts/refresh` and `/api/posts/:id`, must be registered in that order). Shared logic goes in `server/lib/`; import what you need with `require` and export what others need with `module.exports`. A new Mongoose model goes in `server/models.js`.
+
 ## Production notes
 
 - **Vercel:** keep `vercel.json` as shipped. It turns framework auto-detection off (`"framework": null`), builds the stylesheet, serves `public/` as static files, and sends `/api/*` to the `api/` function (`api/index.js` via the rewrite, with `api/[...path].js` as a backup route). Newer Vercel versions auto-detect Express projects and then ignore or reinterpret this setup, which caused build errors and 404s on `/api/*`. If Vercel's dashboard still shows Framework Preset = Express, set it to Other. After deploying, open `/api/health`: `{"ok":true,...}` means routing and MongoDB both work; a Vercel NOT_FOUND page means routing is wrong; a 500 means check Vercel → Logs (a missing `JWT_SECRET` or `MONGODB_URI` shows up there).
