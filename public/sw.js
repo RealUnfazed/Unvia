@@ -2,7 +2,6 @@
 // so a deploy is always picked up immediately.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
-self.addEventListener('fetch', () => {}); // no-op: lets the browser treat this as an installable app without intercepting requests
 
 self.addEventListener('push', (e) => {
   let d = {};

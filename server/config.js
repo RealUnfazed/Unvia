@@ -12,9 +12,11 @@ if (PUSH) webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@exa
 
 const PROD = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
 
-// A guessable secret lets anyone forge login tokens, so production refuses to start without a real one.
-if (PROD && (JWT_SECRET === 'dev-secret' || String(JWT_SECRET).length < 24)) throw new Error('JWT_SECRET must be set to a long random value (24+ characters) in production.');
+// A guessable secret lets anyone forge login tokens, so in production the app refuses to serve requests until a real one is set.
+// It answers every API call with this message (see middleware.js) instead of crashing into a blank 500.
+const CONFIG_ERROR = PROD && (JWT_SECRET === 'dev-secret' || String(JWT_SECRET).length < 24) ? 'Server setup incomplete: JWT_SECRET must be set to a long random value (24+ characters). Add it in your host’s environment variables (Vercel → Settings → Environment Variables) and redeploy.' : null;
+if (CONFIG_ERROR) console.error(CONFIG_ERROR);
 
 const PF = 'https://postfile.net/v1', pfH = { 'X-API-Key': POSTFILE_API_KEY };
 
-module.exports = { JWT_SECRET, MONGODB_URI, PF, POSTFILE_API_KEY, PROD, PUSH, pfH, webpush };
+module.exports = { CONFIG_ERROR, JWT_SECRET, MONGODB_URI, PF, POSTFILE_API_KEY, PROD, PUSH, pfH, webpush };

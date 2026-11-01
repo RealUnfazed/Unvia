@@ -12,8 +12,12 @@ const r = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', env: { .
 const n = parseInt((r.stdout || '').trim());
 if (r.status === 0 && n > 100) console.log(`server.js loads cleanly (${n} routes registered)`);
 else { console.log('FAIL: server.js did not load\n' + (r.stderr || r.stdout).split('\n').slice(0, 6).join('\n')); process.exit(1); }
-// Production must fail closed: no real JWT secret means anyone could forge logins, so the server must refuse to start.
-const prod = (secret) => spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', env: { ...process.env, NODE_PATH: nm, NODE_ENV: 'production', JWT_SECRET: secret } });
-const weak = prod(''), ok = prod('x'.repeat(40));
-if (weak.status !== 0 && /JWT_SECRET/.test(weak.stderr) && ok.status === 0) console.log('production refuses a missing/default JWT secret and accepts a long one');
-else { console.log('FAIL: production secret check', weak.status, ok.status, (weak.stderr || '').split('\n')[0]); process.exit(1); }
+// Production must fail closed, but visibly: with no real JWT secret the server still starts and answers every API request with a clear 503 message, never a silent 500.
+const cfgCode = `process.stdout.write(String(require(${JSON.stringify(path.join(__dirname, '..', 'server', 'config.js'))}).CONFIG_ERROR))`;
+const cfg = (env) => spawnSync(process.execPath, ['-e', cfgCode], { encoding: 'utf8', env: { ...process.env, NODE_PATH: nm, ...env } });
+const weak = cfg({ NODE_ENV: 'production', JWT_SECRET: '' }), strong = cfg({ NODE_ENV: 'production', JWT_SECRET: 'x'.repeat(40) }), dev = cfg({ NODE_ENV: '', VERCEL_ENV: '', JWT_SECRET: '' });
+if (weak.status === 0 && /JWT_SECRET must be set/.test(weak.stdout) && strong.stdout === 'null' && dev.stdout === 'null') console.log('production without a real JWT secret reports a clear setup error; a long secret (and local dev) is fine');
+else { console.log('FAIL: production secret check', weak.stdout, strong.stdout, dev.stdout, weak.stderr.split('\n')[0]); process.exit(1); }
+const mw = fs.readFileSync(path.join(__dirname, '..', 'server', 'middleware.js'), 'utf8');
+if (!/CONFIG_ERROR \? res\.status\(503\)/.test(mw) || !/Can’t reach the database/.test(mw)) { console.log('FAIL: middleware must explain configuration and database problems with a 503'); process.exit(1); }
+console.log('misconfiguration and database failures are answered with a readable 503');

@@ -4,6 +4,6 @@ const { MONGODB_URI } = require('./config');
 
 let conn; // cached so serverless invocations reuse the connection
 
-const db = () => (conn ||= (() => { if (!MONGODB_URI) throw new Error('MONGODB_URI is not set'); return mongoose.connect(MONGODB_URI); })());
+const db = () => (conn ||= (() => { if (!MONGODB_URI) throw new Error('MONGODB_URI is not set'); return mongoose.connect(MONGODB_URI).catch((e) => { conn = undefined; throw e; }); })()); // a failed attempt is forgotten, so the next request retries
 
-module.exports = { conn, db };
+module.exports = { db };
