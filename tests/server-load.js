@@ -21,3 +21,10 @@ else { console.log('FAIL: production secret check', weak.stdout, strong.stdout, 
 const mw = fs.readFileSync(path.join(__dirname, '..', 'server', 'middleware.js'), 'utf8');
 if (!/CONFIG_ERROR \? res\.status\(503\)/.test(mw) || !/Can’t reach the database/.test(mw)) { console.log('FAIL: middleware must explain configuration and database problems with a 503'); process.exit(1); }
 console.log('misconfiguration and database failures are answered with a readable 503');
+
+// Every entry point Vercel or `npm start` uses must export the Express app itself (a function with .listen), not a wrapper object.
+const entryCode = `const out = {}; for (const f of ['server.js', 'api/index.js', 'api/[...path].js']) { const m = require(${JSON.stringify(path.join(__dirname, '..'))} + '/' + f); out[f] = typeof m; if (f === 'server.js') out.listen = typeof m.listen; } process.stdout.write(JSON.stringify(out));`;
+const ent = spawnSync(process.execPath, ['-e', entryCode], { encoding: 'utf8', env: { ...process.env, NODE_PATH: nm } });
+let types = {}; try { types = JSON.parse(ent.stdout); } catch { /* reported below */ }
+if (types['server.js'] === 'function' && types.listen === 'function' && types['api/index.js'] === 'function' && types['api/[...path].js'] === 'function') console.log('server.js and both api/ entries export the Express app (a function)');
+else { console.log('FAIL: entry points must export the app itself', ent.stdout, (ent.stderr || '').split('\n')[0]); process.exit(1); }

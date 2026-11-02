@@ -1,5 +1,5 @@
 // Builds the app: middleware first, then every routes file (order matters for overlapping paths), then the final handlers.
-const app = require('./app');
+const { app } = require('./app');
 require('./middleware');
 require('./routes/auth');
 require('./routes/account');
