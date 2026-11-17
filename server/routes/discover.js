@@ -2,7 +2,7 @@
 const { app } = require('../app');
 const { pop, pub, shape } = require('../lib/shape');
 const { TOPICS } = require('../lib/topics');
-const { fakeVal, has } = require('../lib/util');
+const { fakeVal, has, visible } = require('../lib/util');
 const { hiddenCommunities, hiddenFor, hiddenPosts } = require('../lib/visibility');
 const { Community, Post, User } = require('../models');
 

@@ -3,8 +3,8 @@ const { app } = require('../app');
 const { auth } = require('../lib/guards');
 const { isSuspended } = require('../lib/moderation');
 const { notify, unnotify } = require('../lib/notify');
-const { bornText } = require('../lib/shape');
-const { fakeVal, has } = require('../lib/util');
+const { bornText, pub } = require('../lib/shape');
+const { fakeVal, has, visible } = require('../lib/util');
 const { hiddenFor } = require('../lib/visibility');
 const { Post, User } = require('../models');
 

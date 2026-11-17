@@ -4,6 +4,7 @@ const { auth } = require('../lib/guards');
 const { pub } = require('../lib/shape');
 const { hiddenFor } = require('../lib/visibility');
 const { Notif } = require('../models');
+const { visible } = require('../lib/util');
 
 const notifQuery = async (me) => ({ to: me._id, from: { $nin: await hiddenFor(me) }, ...visible() });
 

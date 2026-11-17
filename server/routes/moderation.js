@@ -8,6 +8,7 @@ const { canActOn, isSuspended, logMod, resetFilter, suspend } = require('../lib/
 const { topicsOf } = require('../lib/topics');
 const { OID, oid } = require('../lib/util');
 const { Filter, ModLog, Note, Post, Report, User } = require('../models');
+const { pub } = require('../lib/shape');
 
 app.post('/api/admin/backfill-topics', (q, r, n) => adm(q, r, n), async (req, res) => { // tags posts written before topics existed
   let n = 0;

@@ -3,7 +3,7 @@ const { app } = require('../app');
 const { auth } = require('../lib/guards');
 const { clientIp } = require('../lib/ratelimit');
 const { pollShape } = require('../lib/shape');
-const { OID, fakeVal } = require('../lib/util');
+const { OID, fakeVal, visible } = require('../lib/util');
 const { Daily, Post, User, ViewSeen } = require('../models');
 
 // views: one impression per viewer session per post (client dedupes); authors don't count their own

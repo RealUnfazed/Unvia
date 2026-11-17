@@ -7,7 +7,7 @@ const { notify, unnotify } = require('../lib/notify');
 const { canReplyTo, pop, replyMsg, shape } = require('../lib/shape');
 const { topicsOf } = require('../lib/topics');
 const { pfDelete, pfUpload, upload } = require('../lib/uploads');
-const { OID, has } = require('../lib/util');
+const { OID, has, visible } = require('../lib/util');
 const { canSeeCommunity, hiddenCommunities, hiddenPosts, isMember } = require('../lib/visibility');
 const { Community, Daily, Folder, List, Note, Notif, Post, User } = require('../models');
 

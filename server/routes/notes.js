@@ -1,7 +1,7 @@
 // Community Notes.
 const { app } = require('../app');
 const { auth } = require('../lib/guards');
-const { NOTE_MIN_AGE, notePost, refreshNote } = require('../lib/notes');
+const { NOTE_MIN_AGE, notePost, refreshNote, noteScore } = require('../lib/notes');
 const { OID, oid } = require('../lib/util');
 const { Note } = require('../models');
 
