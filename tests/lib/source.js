@@ -14,4 +14,9 @@ function stmt(src, anchor) {
   for (let i = 1; i < lines.length && (!lines[i] || /^[\s})\].]/.test(lines[i])); i++) out.push(lines[i]);
   return out.join('\n').trimEnd();
 }
-module.exports = { root, read, walk, serverSrc, stmt };
+// The client is many plain scripts (public/js/*.js) loaded in the order index.html lists them; tests see them as one source.
+const clientFiles = () => [...read('public/index.html').matchAll(/<script src="\/(js\/[\w-]+\.js)"><\/script>/g)].map((m) => 'public/' + m[1]);
+const clientSrc = () => clientFiles().map(read).join('\n');
+const clientCss = () => read('public/css/app.css');
+
+module.exports = { root, read, walk, serverSrc, stmt, clientFiles, clientSrc, clientCss };

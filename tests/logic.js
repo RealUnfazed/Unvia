@@ -1,6 +1,6 @@
 // Pure-logic tests. Functions are pulled straight out of the source files, so there is no copy to drift out of date.
 const fs = require('fs'), path = require('path'), vm = require('vm'), crypto = require('crypto'), net = require('net');
-const client = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+const client = require('./lib/source').clientSrc();
 const { read, stmt } = require('./lib/source');
 const need = (src, s) => { const i = src.indexOf(s); if (i < 0) throw new Error(`test anchor not found: ${s}`); return i; };
 const slice = (src, from, to) => { const a = need(src, from); return src.slice(a, need(src.slice(a), to) + a); };
@@ -51,7 +51,7 @@ const esc = (x) => (x || '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '
 const { urlify } = load(slice(client, 'const urlify', 'const linkify'), ['urlify']);
 const lk = urlify(esc('see https://example.com/a?x=1&y=2, and (https://foo.dev/bar). <script>alert(1)</script>'));
 eq('urlify links + trims punctuation', lk.includes('href="https://example.com/a?x=1&amp;y=2"') && lk.includes('href="https://foo.dev/bar"') && !lk.includes('<script>'), true);
-const mc = { me: { id: 'me', mutedWords: ['spoiler', '#election', 'c++', 'bad news'] } }, mw = load(slice(client, "let _mw = '', _mr = [];", '// ---------- settings ----------'), ['muted'], mc);
+const mc = { me: { id: 'me', mutedWords: ['spoiler', '#election', 'c++', 'bad news'] } }, mw = load(slice(client, "let _mw = '', _mr = [];", '\nasync function settings('), ['muted'], mc);
 const P = (text, id = 'o') => ({ text, author: { id } });
 eq('muted word', mw.muted(P('big spoiler ahead')), true); eq('muted not inside other words', mw.muted(P('spoilerfree')), false); eq('muted hashtag', mw.muted(P('on #election tonight')), true);
 eq('muted special chars', mw.muted(P('I love c++')), true); eq('muted phrase', mw.muted(P('some bad news')), true); eq('own posts never muted', mw.muted(P('spoiler', 'me')), false);

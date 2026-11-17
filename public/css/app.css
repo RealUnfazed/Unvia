@@ -1,0 +1,84 @@
+/* App styles: animations, themes (dim/light remap the Tailwind neutrals), sidebar and chat layout. Tailwind utilities come from /tailwind.css. */
+@keyframes pg{from{opacity:0;transform:translateY(8px)}}
+@keyframes drop{from{opacity:0;transform:translateY(-14px) scale(.98)}}
+@keyframes pop{40%{transform:scale(1.4)}}
+@keyframes sh{100%{transform:translateX(100%)}}
+.pg{animation:pg .22s ease-out}.drop{animation:drop .3s cubic-bezier(.2,.8,.2,1)}
+.pop svg{animation:pop .35s ease}
+dialog[open]{animation:pg .2s ease-out}dialog::backdrop{backdrop-filter:blur(3px)}
+button{transition:background-color .15s,color .15s,border-color .15s,transform .1s}button:active{transform:scale(.95)}
+a{transition:background-color .15s,color .15s}
+.skl{position:relative;overflow:hidden}.skl::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);transform:translateX(-100%);animation:sh 1.2s infinite}
+aside{scrollbar-width:none}
+@keyframes heart{0%{transform:scale(1)}30%{transform:scale(.55) rotate(-14deg)}60%{transform:scale(1.55) rotate(8deg)}100%{transform:scale(1)}}
+@keyframes spin{to{transform:rotate(360deg) scale(1.15)}}
+@keyframes drip{0%{transform:translateY(0)}30%{transform:translateY(-8px) scaleY(1.2)}60%{transform:translateY(2px) scaleY(.8)}100%{transform:translateY(0)}}
+@keyframes nudge{0%,100%{transform:none}30%{transform:translateX(6px) rotate(-14deg)}60%{transform:translateX(-3px) rotate(9deg)}}
+@keyframes flash{0%{background:rgba(56,189,248,.14)}100%{background:transparent}}
+.a-like svg{animation:heart .55s cubic-bezier(.2,.8,.2,1.4)}
+.a-repost svg{animation:spin .6s cubic-bezier(.3,1.4,.5,1)}.a-bookmark svg{animation:drip .5s ease}.a-reply svg{animation:nudge .5s ease}
+.flash{animation:flash .8s ease}
+.cnt{display:inline-block;font-variant-numeric:tabular-nums}
+@keyframes grow{from{width:0}}.bar{animation:grow .8s cubic-bezier(.2,.8,.2,1)}
+.in-dm button.fixed{display:none}
+.navtop{scrollbar-width:none;overscroll-behavior:contain}.navtop::-webkit-scrollbar{display:none}
+@media (max-height:800px){#nav a,#nav button{padding:.5rem .75rem!important;font-size:1.1rem!important}#nav svg{height:1.5rem!important;width:1.5rem!important}.navtop>a:first-child{height:2.5rem!important}}
+@media (max-height:640px){#nav a,#nav button{padding:.3rem .6rem!important;font-size:1rem!important}#nav svg{height:1.35rem!important;width:1.35rem!important}.navtop [data-compose]{margin-top:.5rem!important;height:2.5rem!important}}
+.dmfoot{position:sticky;bottom:calc(2.85rem + env(safe-area-inset-bottom))}@media (min-width:640px){.dmfoot{bottom:0}}
+/* themes: dim + light remap the app's neutral colors; the default (dark) needs no overrides */
+html[data-theme=dim]{color-scheme:dark}
+html[data-theme=dim] .bg-black{background-color:rgb(21 32 43)}
+html[data-theme=dim] .bg-black\/80{background-color:rgb(21 32 43 / 0.8)}
+html[data-theme=dim] .bg-black\/90{background-color:rgb(21 32 43 / 0.9)}
+html[data-theme=dim] .focus\:bg-black:focus{background-color:rgb(21 32 43)}
+html[data-theme=dim] .border-black{border-color:rgb(21 32 43)}
+html[data-theme=dim] .bg-white{background-color:rgb(255 255 255)}
+html[data-theme=dim] .text-black{color:rgb(15 20 25)}
+html[data-theme=dim] .hover\:bg-zinc-200:hover{background-color:rgb(215 219 220)}
+html[data-theme=dim] .hover\:bg-white\/\[\.03\]:hover{background-color:rgb(255 255 255 / 0.03)}
+html[data-theme=dim] .hover\:bg-white\/\[\.04\]:hover{background-color:rgb(255 255 255 / 0.04)}
+html[data-theme=dim] .bg-zinc-700\/70{background-color:rgb(75 90 102 / 0.7)}
+html[data-theme=dim] .bg-zinc-800{background-color:rgb(56 68 77)}
+html[data-theme=dim] .bg-zinc-900{background-color:rgb(30 41 54)}
+html[data-theme=dim] .bg-zinc-950\/60{background-color:rgb(25 39 52 / 0.6)}
+html[data-theme=dim] .hover\:bg-zinc-800:hover{background-color:rgb(56 68 77)}
+html[data-theme=dim] .hover\:bg-zinc-900:hover{background-color:rgb(30 41 54)}
+html[data-theme=dim] .border-zinc-600{border-color:rgb(75 90 102)}
+html[data-theme=dim] .border-zinc-800{border-color:rgb(56 68 77)}
+html[data-theme=dim] .text-zinc-100{color:rgb(247 249 249)}
+html[data-theme=dim] .text-zinc-400{color:rgb(154 167 178)}
+html[data-theme=dim] .text-zinc-500{color:rgb(139 152 165)}
+html[data-theme=dim] .text-zinc-600{color:rgb(107 124 138)}
+html[data-theme=dim] .hover\:text-zinc-200:hover{color:rgb(247 249 249)}
+html[data-theme=dim] .hover\:text-zinc-100:hover{color:rgb(247 249 249)}
+html[data-theme=dim] .placeholder\:text-zinc-500::placeholder{color:rgb(139 152 165)}
+html[data-theme=dim] dialog::backdrop{background:rgb(91 112 131 / 0.4)}
+html[data-theme=dim] .skl::after{background:linear-gradient(90deg,transparent,rgb(255 255 255 / 0.08),transparent)}
+html[data-theme=light]{color-scheme:light}
+html[data-theme=light] .bg-black{background-color:rgb(255 255 255)}
+html[data-theme=light] .bg-black\/80{background-color:rgb(255 255 255 / 0.8)}
+html[data-theme=light] .bg-black\/90{background-color:rgb(255 255 255 / 0.9)}
+html[data-theme=light] .focus\:bg-black:focus{background-color:rgb(255 255 255)}
+html[data-theme=light] .border-black{border-color:rgb(255 255 255)}
+html[data-theme=light] .bg-white{background-color:rgb(15 20 25)}
+html[data-theme=light] .text-black{color:rgb(255 255 255)}
+html[data-theme=light] .hover\:bg-zinc-200:hover{background-color:rgb(39 44 48)}
+html[data-theme=light] .hover\:bg-white\/\[\.03\]:hover{background-color:rgb(0 0 0 / 0.03)}
+html[data-theme=light] .hover\:bg-white\/\[\.04\]:hover{background-color:rgb(0 0 0 / 0.04)}
+html[data-theme=light] .bg-zinc-700\/70{background-color:rgb(185 202 211 / 0.7)}
+html[data-theme=light] .bg-zinc-800{background-color:rgb(225 232 236)}
+html[data-theme=light] .bg-zinc-900{background-color:rgb(239 243 244)}
+html[data-theme=light] .bg-zinc-950\/60{background-color:rgb(247 249 249 / 0.6)}
+html[data-theme=light] .hover\:bg-zinc-800:hover{background-color:rgb(225 232 236)}
+html[data-theme=light] .hover\:bg-zinc-900:hover{background-color:rgb(239 243 244)}
+html[data-theme=light] .border-zinc-600{border-color:rgb(185 202 211)}
+html[data-theme=light] .border-zinc-800{border-color:rgb(225 232 236)}
+html[data-theme=light] .text-zinc-100{color:rgb(15 20 25)}
+html[data-theme=light] .text-zinc-400{color:rgb(83 100 113)}
+html[data-theme=light] .text-zinc-500{color:rgb(83 100 113)}
+html[data-theme=light] .text-zinc-600{color:rgb(139 152 165)}
+html[data-theme=light] .hover\:text-zinc-200:hover{color:rgb(15 20 25)}
+html[data-theme=light] .hover\:text-zinc-100:hover{color:rgb(15 20 25)}
+html[data-theme=light] .placeholder\:text-zinc-500::placeholder{color:rgb(83 100 113)}
+html[data-theme=light] dialog::backdrop{background:rgb(91 112 131 / 0.4)}
+html[data-theme=light] .skl::after{background:linear-gradient(90deg,transparent,rgb(0 0 0 / 0.08),transparent)}

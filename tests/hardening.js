@@ -1,8 +1,8 @@
 // Production-readiness checks: rate limiter, moderation rules, push helpers, the service worker, and the build/PWA setup.
-const { stmt, serverSrc } = require('./lib/source');
+const { stmt, serverSrc, clientSrc, clientCss } = require('./lib/source');
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const root = path.join(__dirname, '..'), read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
-const server = serverSrc(), html = read('public/index.html'), srcOf = (f) => read('server/' + f);
+const server = serverSrc(), html = [read('public/index.html'), clientSrc(), clientCss()].join('\n'), srcOf = (f) => read('server/' + f);
 const need = (src, s) => { const i = src.indexOf(s); if (i < 0) throw new Error(`test anchor not found: ${s}`); return i; };
 const slice = (src, from, to) => { const a = need(src, from); return src.slice(a, need(src.slice(a), to) + a); };
 const line = (src, from) => { const a = need(src, from); return src.slice(a, src.indexOf('\n', a)); };

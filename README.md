@@ -51,7 +51,7 @@ The **first account registered** automatically becomes the platform owner and ad
 **Vercel:** run `npx vercel`, add the variables above under *Project → Settings → Environment Variables*, then redeploy. In Atlas → *Network Access*, allow `0.0.0.0/0` so serverless functions can connect.
 
 **Android / iOS (Capacitor):**
-1. Set your deployed URL in the `API` constant in `public/index.html`.
+1. Set your deployed URL in the `API` constant in `public/js/state.js`.
 2. `npm run cap:add` (once), then `npm run android` or `npm run ios` (iOS needs macOS and Xcode).
 
 **Desktop (Electron):**
@@ -59,16 +59,6 @@ The **first account registered** automatically becomes the platform owner and ad
 - Installer: set your deployed URL in `electron/main.js`, then `npm run desktop:build`.
 
 Before publishing to app stores, change the bundle ID `com.realunfazed.unvia` in `capacitor.config.json` and `package.json` to your own.
-
-## Project layout
-
-```
-server.js            Express API (auth, posts, users, reports, admin, uploads)
-api/index.js         Vercel serverless entry
-public/index.html    Single-page client (Tailwind via CDN)
-electron/main.js     Desktop shell
-capacitor.config.json  Mobile shell
-```
 
 ## Notes
 
@@ -113,11 +103,17 @@ server/
   lib/                    shared logic, one topic per file (shape, visibility, moderation, notify, security, ratelimit, uploads, ...)
   routes/                 one file per feature: auth, account, posts, users, conversations (DMs), lists, communities, notes, ...
 api/                      Vercel function entry points
-public/                   the web app (index.html, service worker, manifest, icons)
+public/
+  index.html              page shell: head, markup and the <script> tags
+  css/app.css             app styles (animations, themes, sidebar and chat layout)
+  js/                     the client: one plain script per feature, loaded in the order index.html lists them
+  sw.js  manifest.webmanifest  icons
 tests/                    npm test
 ```
 
 **Adding an API endpoint:** put it in the matching file in `server/routes/` (or create one and add its `require` line to `server/index.js`; routes that overlap, like `/api/posts/refresh` and `/api/posts/:id`, must be registered in that order). Shared logic goes in `server/lib/`; import what you need with `require` and export what others need with `module.exports`. A new Mongoose model goes in `server/models.js`.
+
+**Adding a client feature:** create `public/js/<feature>.js` and add its `<script src>` line to `public/index.html`, after the files it uses and before `events.js`. The files are plain scripts that share one global scope, so give new functions names no other file uses. Register buttons and forms with `CLICK.push(async ({ e, b, d, art }) => { ... })` and `SUBMIT.push(async ({ e, f, body }) => { ... })`: `d` is the clicked button's `data-*` attributes, and a handler returns `NEXT` (or just finishes) to let the next handler look at the event, or returns anything else once it has handled it. Tailwind scans `public/js/**/*.js`, so utility classes written there are compiled.
 
 ## Production notes
 
