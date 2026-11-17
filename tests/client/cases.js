@@ -56,10 +56,24 @@ const doSubmit = async (f) => { f.classList ||= { contains: () => false }; f.que
   me = meU; token = 't'; PL = [{ id: 'l1', name: 'My <b>list</b>' }];
   chrome(); const nav = $('#nav').innerHTML, tabs = $('#tabs').innerHTML;
   ok('desktop sidebar: main items shown', ['Explore', 'Lists', 'Communities', 'Messages', 'Bookmarks', 'Profile'].every((x) => nav.includes(x)));
-  ok('desktop sidebar: Analytics/Settings/Admin live under More', !nav.includes('#/analytics') && !nav.includes('#/settings') && nav.includes('data-more="desk"') && DMORE.map((i) => i[1]).join() === 'Analytics,Settings,Admin');
-  ok('sidebar scrolls on short screens with the account pinned', html_.includes('navtop min-h-0 flex-1 overflow-y-auto') && html_.includes('id="acct" class="shrink-0') && html_.includes('@media (max-height:800px)') && html_.includes('@media (max-height:640px)'));
+  ok('desktop sidebar: Analytics/Drafts/Settings/Admin live under More', !nav.includes('#/analytics') && !nav.includes('#/settings') && nav.includes('data-more="desk"') && DMORE.map((i) => i[1]).join() === 'Analytics,Drafts,Settings,Admin');
+  ok('sidebar scrolls on short screens with the account pinned', html_.includes('navtop min-h-0 flex-1 overflow-y-auto') && html_.includes('id="acct" class="shrink-0') && html_.includes('.nv{') && html_.includes('clamp(') && !html_.includes('@media (max-height'));
   ok('mobile tabs: primary + More', tabs.includes('data-more') && tabs.includes('#/explore') && !tabs.includes('#/lists'));
-  await fire(clickEl({ more: 'desk' })); ok('desktop More menu lists Analytics, Settings, Admin', ['Analytics', 'Settings', 'Admin'].every((x) => dlg.innerHTML.includes(x)) && !dlg.innerHTML.includes('Explore'));
+  const labels = [...nav.matchAll(/<span class="hidden xl:inline">([^<]+)<\/span>/g)].map((m) => m[1]).join();
+  ok('desktop sidebar order matches X: Home, Explore, Notifications, Messages, Lists, Bookmarks, Communities, Profile, More', labels === 'Home,Explore,Notifications,Messages,Lists,Bookmarks,Communities,Profile,More');
+  ok('signed in: the account button opens a menu (data-acct)', $('#acct').innerHTML.includes('data-acct') && !$('#acct').innerHTML.includes('data-out'));
+  ok('the popup menu helper runs', (() => { try { popMenu($('#acct'), '<a></a>'); return true; } catch (x) { console.log(x); return false; } })());
+  const meKeep = me; me = null; chrome(); const gn = $('#nav').innerHTML, ga = $('#acct').innerHTML, gt = $('#tabs').innerHTML;
+  ok('signed out: sidebar only has Home, Explore, Communities', ['Home', 'Explore', 'Communities'].every((x) => gn.includes(x)) && !gn.includes('Bookmarks') && !gn.includes('Profile') && !gn.includes('data-more'));
+  ok('signed out: small round login button below xl, Log in + Sign up at xl (never wider than the narrow sidebar)', ga.includes('xl:hidden') && ga.includes('data-login="reg"') && ga.includes('Sign up') && !ga.includes('px-5'));
+  ok('signed out: the phone tab bar has a Log in tab', gt.includes('data-login') && !gt.includes('data-more'));
+  me = meKeep; chrome();
+  { const made = [], mk = document.createElement; document.createElement = (tag) => { const el = mk(tag); made.push(el); return el; };
+    await fire(clickEl({ more: 'desk' })); document.createElement = mk; const pop = made.find((x) => x.id === 'mpop');
+    ok('desktop More opens a popup menu listing Analytics, Drafts, Settings, Admin (not the main pages)', !!pop && ['Analytics', 'Drafts', 'Settings', 'Admin'].every((x) => pop.innerHTML.includes(x)) && !pop.innerHTML.includes('Explore'));
+    const made2 = []; document.createElement = (tag) => { const el = mk(tag); made2.push(el); return el; };
+    await fire(clickEl({ acct: '' })); document.createElement = mk; const pop2 = made2.find((x) => x.id === 'mpop');
+    ok('the account button opens a menu with Settings and Log out @username', !!pop2 && pop2.innerHTML.includes('Settings') && pop2.innerHTML.includes('data-out') && pop2.innerHTML.includes('@' + me.username)); }
   // ---- card ----
   const c = card(post()); bad('card', c);
   ok('card shows views, community label, note, verified+lock', c.includes('data-act="views"') && c.includes('Devs') && c.includes('Readers added context') && c.includes('Protected account'));

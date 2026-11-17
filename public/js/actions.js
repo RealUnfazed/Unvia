@@ -4,7 +4,7 @@
 // Click actions
 CLICK.push(async ({ e, b, d, art }) => {
   {
-    if ('login' in d) return openAuth();
+    if ('login' in d) { reg = d.login === 'reg'; return openAuth(); }
     if ('need' in d) { e.preventDefault(); return openAuth(); }
     if (b?.getAttribute('href') === '#/' && cur === '#/') return scrollTo({ top: 0, behavior: 'smooth' });
     if ('back' in d) return history.length > 1 ? history.back() : (location.hash = '#/');

@@ -21,9 +21,15 @@ aside{scrollbar-width:none}
 .cnt{display:inline-block;font-variant-numeric:tabular-nums}
 @keyframes grow{from{width:0}}.bar{animation:grow .8s cubic-bezier(.2,.8,.2,1)}
 .in-dm button.fixed{display:none}
-.navtop{scrollbar-width:none;overscroll-behavior:contain}.navtop::-webkit-scrollbar{display:none}
-@media (max-height:800px){#nav a,#nav button{padding:.5rem .75rem!important;font-size:1.1rem!important}#nav svg{height:1.5rem!important;width:1.5rem!important}.navtop>a:first-child{height:2.5rem!important}}
-@media (max-height:640px){#nav a,#nav button{padding:.3rem .6rem!important;font-size:1rem!important}#nav svg{height:1.35rem!important;width:1.35rem!important}.navtop [data-compose]{margin-top:.5rem!important;height:2.5rem!important}}
+/* Left sidebar, like X: row size, spacing and the Post button follow the window height (tall = roomy, short = tight, no jumps); only very short windows scroll. */
+.navtop{display:flex;flex-direction:column;align-items:center;scrollbar-width:none;overscroll-behavior:contain;--pb:clamp(2.5rem,3.2vh + 1.1rem,3.25rem)}.navtop::-webkit-scrollbar{display:none}
+.navtop>a:first-child{height:clamp(2.5rem,3.2vh + 1.1rem,3rem)}
+#nav{display:flex;flex-direction:column;align-items:center;gap:clamp(0px,1vh - 6px,6px)}
+.nv{display:flex;align-items:center;gap:1.25rem;padding:clamp(.3rem,1.4vh - .25rem,.75rem);font-size:clamp(1rem,1.5vh + .55rem,1.25rem);line-height:1.5rem;transition:background-color .15s}
+.nv svg{width:clamp(1.4rem,2.2vh + .5rem,1.75rem)!important;height:clamp(1.4rem,2.2vh + .5rem,1.75rem)!important}
+.nv.on{font-weight:700}.nv.on svg{stroke-width:3}
+.navtop [data-compose]{width:var(--pb);height:var(--pb);margin-top:clamp(.5rem,1.6vh,1rem)}
+@media (min-width:1280px){.navtop{align-items:stretch}#nav{align-items:flex-start}.navtop [data-compose]{width:100%}}
 .dmfoot{position:sticky;bottom:calc(2.85rem + env(safe-area-inset-bottom))}@media (min-width:640px){.dmfoot{bottom:0}}
 /* themes: dim + light remap the app's neutral colors; the default (dark) needs no overrides */
 html[data-theme=dim]{color-scheme:dark}
