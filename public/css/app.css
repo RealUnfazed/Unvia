@@ -21,15 +21,18 @@ aside{scrollbar-width:none}
 .cnt{display:inline-block;font-variant-numeric:tabular-nums}
 @keyframes grow{from{width:0}}.bar{animation:grow .8s cubic-bezier(.2,.8,.2,1)}
 .in-dm button.fixed{display:none}
-/* Left sidebar, like X: row size, spacing and the Post button follow the window height (tall = roomy, short = tight, no jumps); only very short windows scroll. */
-.navtop{display:flex;flex-direction:column;align-items:center;scrollbar-width:none;overscroll-behavior:contain;--pb:clamp(2.5rem,3.2vh + 1.1rem,3.25rem)}.navtop::-webkit-scrollbar{display:none}
-.navtop>a:first-child{height:clamp(2.5rem,3.2vh + 1.1rem,3rem)}
+/* Left sidebar, like X: row size, spacing and the Post button follow the window height (tall = roomy, short = tight, no jumps); only very short windows scroll.
+   --pad and --ico are shared by the logo and every row, so the logo's centre always sits exactly over the icons' centres. At 1280px+ every row spans the full width, so the hover highlight fills it. */
+.navtop{display:flex;flex-direction:column;align-items:center;scrollbar-width:none;overscroll-behavior:contain;--pad:clamp(.3rem,1.4vh - .25rem,.75rem);--ico:clamp(1.4rem,2.2vh + .5rem,1.75rem);--lg:calc(var(--ico) * 1.15);--pb:clamp(2.5rem,3.2vh + 1.1rem,3.25rem)}
+.navtop::-webkit-scrollbar{display:none}
+.logo{display:flex;align-items:center;width:calc(var(--ico) + var(--pad) * 2);height:calc(var(--lg) + var(--pad) * 2);padding:var(--pad) calc(var(--pad) + (var(--ico) - var(--lg)) / 2);gap:calc(1.25rem - (var(--lg) - var(--ico)) / 2)}
+.logo svg{width:var(--lg);height:var(--lg)}
 #nav{display:flex;flex-direction:column;align-items:center;gap:clamp(0px,1vh - 6px,6px)}
-.nv{display:flex;align-items:center;gap:1.25rem;padding:clamp(.3rem,1.4vh - .25rem,.75rem);font-size:clamp(1rem,1.5vh + .55rem,1.25rem);line-height:1.5rem;transition:background-color .15s}
-.nv svg{width:clamp(1.4rem,2.2vh + .5rem,1.75rem)!important;height:clamp(1.4rem,2.2vh + .5rem,1.75rem)!important}
+.nv{display:flex;align-items:center;gap:1.25rem;padding:var(--pad);font-size:clamp(1rem,1.5vh + .55rem,1.25rem);line-height:1.5rem;transition:background-color .15s}
+.nv svg{width:var(--ico)!important;height:var(--ico)!important}
 .nv.on{font-weight:700}.nv.on svg{stroke-width:3}
 .navtop [data-compose]{width:var(--pb);height:var(--pb);margin-top:clamp(.5rem,1.6vh,1rem)}
-@media (min-width:1280px){.navtop{align-items:stretch}#nav{align-items:flex-start}.navtop [data-compose]{width:100%}}
+@media (min-width:1280px){.navtop,#nav{align-items:stretch}.logo,.navtop [data-compose]{width:100%}}
 .dmfoot{position:sticky;bottom:calc(2.85rem + env(safe-area-inset-bottom))}@media (min-width:640px){.dmfoot{bottom:0}}
 /* themes: dim + light remap the app's neutral colors; the default (dark) needs no overrides */
 html[data-theme=dim]{color-scheme:dark}

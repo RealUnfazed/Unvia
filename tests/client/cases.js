@@ -58,6 +58,8 @@ const doSubmit = async (f) => { f.classList ||= { contains: () => false }; f.que
   ok('desktop sidebar: main items shown', ['Explore', 'Lists', 'Communities', 'Messages', 'Bookmarks', 'Profile'].every((x) => nav.includes(x)));
   ok('desktop sidebar: Analytics/Drafts/Settings/Admin live under More', !nav.includes('#/analytics') && !nav.includes('#/settings') && nav.includes('data-more="desk"') && DMORE.map((i) => i[1]).join() === 'Analytics,Drafts,Settings,Admin');
   ok('sidebar scrolls on short screens with the account pinned', html_.includes('navtop min-h-0 flex-1 overflow-y-auto') && html_.includes('id="acct" class="shrink-0') && html_.includes('.nv{') && html_.includes('clamp(') && !html_.includes('@media (max-height'));
+  ok('sidebar rows fill the full width at xl (hover highlight spans the row)', html_.includes('@media (min-width:1280px){.navtop,#nav{align-items:stretch}'));
+  ok('the logo shares the icons\' padding and size variables, so it lines up with them', html_.includes('class="logo ') && html_.includes('.logo{') && html_.includes('var(--pad)') && html_.includes('var(--ico)') && !html_.includes('h-8 w-8 shrink-0 text-sky-400'));
   ok('mobile tabs: primary + More', tabs.includes('data-more') && tabs.includes('#/explore') && !tabs.includes('#/lists'));
   const labels = [...nav.matchAll(/<span class="hidden xl:inline">([^<]+)<\/span>/g)].map((m) => m[1]).join();
   ok('desktop sidebar order matches X: Home, Explore, Notifications, Messages, Lists, Bookmarks, Communities, Profile, More', labels === 'Home,Explore,Notifications,Messages,Lists,Bookmarks,Communities,Profile,More');
